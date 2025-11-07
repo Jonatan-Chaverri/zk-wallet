@@ -308,6 +308,65 @@ impl ConfidentialERC20 {
         Ok(())
     }
 
+    /// Confidential balance-to-balance transfer.
+    ///
+    /// Noir circuit must enforce:
+    /// - old_from - amount = new_from
+    /// - old_to   + amount = new_to
+    /// - no overspend, etc.
+    pub fn transfer_confidential(
+        &mut self,
+        token: Address,
+        to: Address,
+        new_from_ct_x1: [u8; 32],
+        new_from_ct_x2: [u8; 32],
+        new_to_ct_x1: [u8; 32],
+        new_to_ct_x2: [u8; 32],
+        proof_inputs: Vec<u8>,
+        proof: Vec<u8>,
+    ) -> Result<(), Vec<u8>> {
+        self._non_reentrant()?;
+
+        if !self.supported_tokens.get(token) {
+            self._release_reentrancy();
+            return Err("Token not supported".into());
+        }
+
+        // sender is the confidential "from"
+        let from = self.vm().msg_sender();
+
+        // Verify Noir proof
+        self._verify_proof(token, from, to, &proof_inputs, &proof)?;
+
+        // Replay protection via nullifier
+        let proof_hash = keccak256(&proof);
+        let key = FixedBytes::from(proof_hash);
+        if self.nullifiers.get(key) {
+            self._release_reentrancy();
+            return Err("Proof already used".into());
+        }
+        self.nullifiers.setter(key).set(true);
+
+        // Update encrypted balances for `from` and `to`
+        let ct_from = Ciphertext { x1: new_from_ct_x1, x2: new_from_ct_x2 };
+        let ct_to   = Ciphertext { x1: new_to_ct_x1,   x2: new_to_ct_x2   };
+
+        self._set_balance(token, from, &ct_from);
+        self._set_balance(token, to,   &ct_to);
+
+        // Emit event with new ciphertexts for indexing/off-chain
+        evm::log(TransferConfidential {
+            token,
+            from,
+            to,
+            c_from_new: Bytes::from(encode_ciphertext(&ct_from).to_vec()),
+            c_to_new:   Bytes::from(encode_ciphertext(&ct_to).to_vec()),
+        });
+
+        self._release_reentrancy();
+        Ok(())
+    }
+
     // --- Admin ---
 
     pub fn set_supported_token(&mut self, token: Address, allowed: bool) -> Result<(), Vec<u8>> {
