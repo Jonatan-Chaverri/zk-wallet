@@ -24,7 +24,9 @@ sol! {
         uint256 amount,
         bytes32 new_balance_x1,
         bytes32 new_balance_x2,
-        address to
+        address to,
+        bytes   proof_inputs,
+        bytes   proof
     );
 
     function transfer_confidential(
@@ -166,7 +168,7 @@ impl UserWallet {
         proof: FixedBytes<32>,
     ) -> Result<(), Vec<u8>> {
         self._only_owner()?;
-
+    
         let calldata = transfer_confidentialCall {
             token,
             to,
@@ -178,14 +180,14 @@ impl UserWallet {
             proof: proof.into(),
         }
         .abi_encode();
-
+    
         let conf = self.confidential_erc20.get();
         unsafe {
             let _ = RawCall::new().call(conf, &calldata)?;
         }
-
+    
         Ok(())
-    }
+    }    
 
     /// Private withdrawal from ConfidentialERC20 back to a plain ERC-20 balance.
     ///
