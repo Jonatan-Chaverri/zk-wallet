@@ -1,6 +1,6 @@
 import express from 'express';
-import { submitDeposit, submitWithdraw } from '../services/transactionService';
-import { DepositRequest, WithdrawRequest } from '../types';
+import { submitDeposit, submitTransfer, submitWithdraw } from '../services/transactionService';
+import { DepositRequest, TransferRequest, WithdrawRequest } from '../types';
 
 const router = express.Router();
 
@@ -20,6 +20,33 @@ router.post('/deposit', async (req, res, next) => {
     }
 
     const txHash = await submitDeposit(params);
+
+    res.json({
+      success: true,
+      txHash,
+    });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/transaction/transfer
+ * Submit a transfer transaction
+ */
+router.post('/transfer', async (req, res, next) => {
+  try {
+    const params: TransferRequest = req.body;
+
+    // Validate required fields
+    if (!params.userWalletAddress || !params.tokenAddress || !params.recipient || 
+        !params.fromNewBalance || !params.toNewBalance || !params.proofInputs || !params.proof) {
+      return res.status(400).json({
+        error: 'Missing required fields: userWalletAddress, tokenAddress, recipient, fromNewBalance, toNewBalance, proofInputs, proof',
+      });
+    }
+
+    const txHash = await submitTransfer(params);
 
     res.json({
       success: true,

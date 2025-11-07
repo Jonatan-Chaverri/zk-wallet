@@ -31,6 +31,16 @@ export interface DepositRequest {
   proof: string;
 }
 
+export interface TransferRequest {
+  userWalletAddress: Address;
+  tokenAddress: Address;
+  recipient: Address;
+  fromNewBalance: Ciphertext;
+  toNewBalance: Ciphertext;
+  proofInputs: string;
+  proof: string;
+}
+
 export interface WithdrawRequest {
   userWalletAddress: Address;
   tokenAddress: Address;

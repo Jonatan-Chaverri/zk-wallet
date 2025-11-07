@@ -10,7 +10,7 @@ use alloc::vec::Vec;
 use stylus_sdk::{
     prelude::*,
     call::RawCall,
-    alloy_primitives::{Address, U256, FixedBytes},
+    alloy_primitives::{Address, U256, FixedBytes, Bytes},
     alloy_sol_types::{sol, SolCall},
 };
 
@@ -24,7 +24,16 @@ sol! {
         uint256 amount,
         bytes32 new_balance_x1,
         bytes32 new_balance_x2,
+        address to
+    );
+
+    function transfer_confidential(
+        address token,
         address to,
+        bytes32 new_from_x1,
+        bytes32 new_from_x2,
+        bytes32 new_to_x1,
+        bytes32 new_to_x2,
         bytes   proof_inputs,
         bytes   proof
     );
@@ -117,6 +126,54 @@ impl UserWallet {
             new_balance_x1,
             new_balance_x2,
             to,
+            proof_inputs: proof_inputs.into(),
+            proof: proof.into(),
+        }
+        .abi_encode();
+
+        let conf = self.confidential_erc20.get();
+        unsafe {
+            let _ = RawCall::new().call(conf, &calldata)?;
+        }
+
+        Ok(())
+    }
+
+    /// Private transfer between confidential balances.
+    ///
+    /// Forwards to:
+    ///   ConfidentialERC20.transfer_confidential(
+    ///     token,
+    ///     to,
+    ///     new_from_x1, new_from_x2,
+    ///     new_to_x1,   new_to_x2,
+    ///     proof_inputs,
+    ///     proof
+    ///   )
+    ///
+    /// Here:
+    ///  - `from` inside ConfidentialERC20 will be `msg.sender` = this wallet.
+    ///  - `to` is the recipient confidential account (likely another wallet).
+    pub fn transfer_private(
+        &mut self,
+        token: Address,
+        to: Address,
+        new_from_x1: FixedBytes<32>,
+        new_from_x2: FixedBytes<32>,
+        new_to_x1: FixedBytes<32>,
+        new_to_x2: FixedBytes<32>,
+        proof_inputs: FixedBytes<32>,
+        proof: FixedBytes<32>,
+    ) -> Result<(), Vec<u8>> {
+        self._only_owner()?;
+
+        let calldata = transfer_confidentialCall {
+            token,
+            to,
+            new_from_x1,
+            new_from_x2,
+            new_to_x1,
+            new_to_x2,
             proof_inputs: proof_inputs.into(),
             proof: proof.into(),
         }

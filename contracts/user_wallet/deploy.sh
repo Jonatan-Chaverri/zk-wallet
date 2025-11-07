@@ -6,7 +6,6 @@ set -a
 source .env
 set +a
 
-DOCKER_DEFAULT_PLATFORM=linux/arm64 cargo stylus deploy \
-  --wasm-file target/wasm32-unknown-unknown/release/user_wallet.wasm \
+cargo stylus deploy \
   --endpoint="$RPC_URL" \
-  --private-key="$ACCOUNT_PRIVATE_KEY" \
+  --private-key="$ACCOUNT_PRIVATE_KEY"
