@@ -1,4 +1,0 @@
-
-======= <stdin>:IWalletFactory =======
-Contract JSON ABI
-[{"inputs":[],"name":"deployWallet","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"bytes32","name":"salt","type":"bytes32"},{"internalType":"uint8[]","name":"code","type":"uint8[]"}],"name":"predictWalletAddress","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"}]
