@@ -2,27 +2,34 @@ const hre = require("hardhat");
 const fs = require("fs");
 const path = require("path");
 const { randomBytes } = require("crypto");
+const { Wallet } = require("ethers");
 
 const abiPath = path.join(process.cwd(), "abis", "confidential_erc20_abi_flat.txt");
 const ABI = JSON.parse(fs.readFileSync(abiPath, "utf8"));
 
-async function getOwner(contract) {
-  return await contract.getOwner();
+async function generatePairOfKeys() {
+  const wallet = Wallet.createRandom(); // creates random secp256k1 keypair
+  const privateKey = wallet.privateKey; // 0x-prefixed 32-byte hex
+  const publicKey = wallet.publicKey;   // 0x04-prefixed 65-byte hex (uncompressed)
+  const address = wallet.address;
+
+  return { privateKey, publicKey, address };
 }
 
-async function getVerifier(contract) {
-  return await contract.getVerifier();
-}
-async function isSupportedToken(contract, token) {
-  return await contract.isSupportedToken(token);
-}
+async function registerUserKey(contract) {
+  const { privateKey, publicKey, address } = await generatePairOfKeys();
 
-async function registerUserPk(contract, pk) {
-  return await contract.registerUserPk(pk);
-}
+  console.log("Generated address:", address);
+  console.log("Public key:", publicKey);
+  const xCoordHex = "0x" + publicKey.slice(4, 68);
+  const pkBytes = hre.ethers.getBytes(xCoordHex);
 
-async function balanceOfEnc(contract, token, user) {
-  return await contract.balanceOfEnc(token, user);
+  // 🚀 Send the transaction
+  const tx = await contract.registerUserPk(Array.from(pkBytes));
+  console.log("✅ Tx hash:", tx.hash);
+  await tx.wait();
+
+  console.log("✔️ Registered key for", address);
 }
 
 async function main() {
@@ -31,22 +38,18 @@ async function main() {
   const contract = new hre.ethers.Contract(address, ABI, signer);
 
   console.log("Getting initial values");
-  const value = await getOwner(contract);
-  console.log("Owner:", value.toString());
-  const verifier = await getVerifier(contract);
+  const owner = await contract.getOwner();
+  console.log("Owner:", owner.toString());
+  const verifier = await contract.getVerifier();
   console.log("Verifier:", verifier.toString());
-  const isSupported = await isSupportedToken(contract, process.env.ETH_TOKEN_ADDRESS);
+  const isSupported = await contract.isSupportedToken(process.env.ETH_TOKEN_ADDRESS);
   console.log("Is supported:", isSupported.toString());
 
   console.log("\n\nRegistering user PK");
-  const pk = randomBytes(32);
-  console.log("Generated PK (hex):", Buffer.from(pk).toString("hex"));
-  const pkArray = Array.from(pk);
-  const result = await registerUserPk(contract, pkArray);
-  console.log("PK registration tx hash:", result.hash);
+  await registerUserKey(contract);
 
   console.log("\n\nGetting balance of user");
-  const balance = await balanceOfEnc(contract, process.env.ETH_TOKEN_ADDRESS, signer.address);
+  const balance = await contract.balanceOfEnc(process.env.ETH_TOKEN_ADDRESS, signer.address);
   console.log("Balance of enc:", balance);
 
 }
