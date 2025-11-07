@@ -1,0 +1,13 @@
+[
+  "function depositPrivate(address token, uint256 amount, bytes32 new_balance_x1, bytes32 new_balance_x2, address to)",
+  "function getAuditPubkey() view returns (bytes32)",
+  "function getConfidentialErc20() view returns (address)",
+  "function getNonce() view returns (uint256)",
+  "function getOwner() view returns (address)",
+  "function init(address owner, address conf_erc20)",
+  "function setAuditPubkey(bytes32 pk)",
+  "function setConfidentialErc20(address new_conf)",
+  "function setOwner(address new_owner)",
+  "function transferPrivate(address token, address to, bytes32 new_from_x1, bytes32 new_from_x2, bytes32 new_to_x1, bytes32 new_to_x2, bytes32 proof_inputs, bytes32 proof)",
+  "function withdrawPrivate(address token, address to, bytes32 new_from_x1, bytes32 new_from_x2, bytes32 proof_inputs, bytes32 proof)"
+]

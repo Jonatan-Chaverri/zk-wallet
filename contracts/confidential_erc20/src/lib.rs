@@ -312,8 +312,7 @@ impl ConfidentialERC20 {
 
     pub fn set_supported_token(&mut self, token: Address, allowed: bool) -> Result<(), Vec<u8>> {
         self._only_owner()?;
-        let mut setter = self.supported_tokens.setter(token);
-        setter.set(allowed);
+        self.supported_tokens.setter(token).set(allowed);
         evm::log(TokenAllowlistUpdated { token, allowed });
         Ok(())
     }
