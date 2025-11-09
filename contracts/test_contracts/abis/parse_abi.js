@@ -3,7 +3,6 @@ const path = require("path");
 
 const ABIS_TO_PARSE = [
   "confidential_erc20_abi.json",
-  "user_wallet_abi.json",
 ];
 
 function extractAbis() {

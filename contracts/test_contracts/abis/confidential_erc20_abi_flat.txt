@@ -8,5 +8,6 @@
   "function registerUserPk(uint8[] pk)",
   "function setSupportedToken(address token, bool allowed)",
   "function setVerifier(address verifier)",
+  "function transferConfidential(address token, address to, uint8[32] new_from_ct_x1, uint8[32] new_from_ct_x2, uint8[32] new_to_ct_x1, uint8[32] new_to_ct_x2, uint8[] proof_inputs, uint8[] proof)",
   "function withdraw(address token, address to, uint8[32] new_from_ct_x1, uint8[32] new_from_ct_x2, uint8[] proof_inputs, uint8[] proof)"
 ]
