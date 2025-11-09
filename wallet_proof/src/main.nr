@@ -1,180 +1,362 @@
-use elgamal::{add_ciphertexts, CipherText, encrypt, decrypt, public_key, verify_embedding};
+use elgamal::{add_ciphertexts, CipherText, encrypt, decrypt, public_key, verify_embedding, embed_message};
 use std::embedded_curve_ops::EmbeddedCurvePoint;
 
-// Helper: Negate a point
+// Helper: Create a zero/default point
+fn zero_point() -> EmbeddedCurvePoint {
+    EmbeddedCurvePoint { x: 0, y: 0, is_infinite: true }
+}
+
+// Helper: Create a zero ciphertext
+fn zero_ciphertext() -> CipherText {
+    (zero_point(), zero_point())
+}
+
+// Helper: Negate a point for subtraction
 fn negate_point(p: EmbeddedCurvePoint) -> EmbeddedCurvePoint {
     EmbeddedCurvePoint { x: p.x, y: -p.y, is_infinite: p.is_infinite }
 }
 
-// Helper: Subtract ciphertexts (homomorphic)
+// Helper: Subtract ciphertexts (homomorphic subtraction)
+// Only works when both ciphertexts use the SAME public key!
 fn subtract_ciphertexts(a: CipherText, b: CipherText) -> CipherText {
     let neg_b = (negate_point(b.0), negate_point(b.1));
     add_ciphertexts(a, neg_b)
 }
 
 // ==================== MAIN CIRCUIT ====================
-// Confidential Wallet: Transfer, Deposit, Withdraw
-// methodTag: 1=transfer (encrypted->encrypted), 2=deposit, 3=withdraw
+// Confidential Wallet: Deposit, Withdraw, Transfer
+// method_tag: 1=transfer, 2=deposit, 3=withdraw
 
 fn main(
-    // Private
-    current_balance: Field,
-    operation_amount: Field,  // deposit/withdraw/transfer amount
-    r_old_balance: Field,
-    r_new_balance: Field,
-    r_transfer_recipient: Field,  // Only used for transfer (methodTag=1)
+    // Private inputs (secrets not revealed in proof)
+    sender_priv_key: Field,
+    current_balance_sender: Field,      // sender's plaintext balance
+    operation_amount: Field,             // amount to deposit/withdraw/transfer
+    r_new_balance_sender: Field,         // randomness for new sender balance encryption
+    r_transfer_amount: Field,            // randomness for encrypting transfer amount (for receiver)
 
-    // Public
+    // Public inputs (visible in proof)
+    sender_address: pub Field,
     sender_pubkey: pub EmbeddedCurvePoint,
-    old_balance_x1: pub EmbeddedCurvePoint,
-    old_balance_x2: pub EmbeddedCurvePoint,
-    recipient_pubkey: pub EmbeddedCurvePoint,  // Only used for transfer (methodTag=1)
-    from: pub Field,
-    to: pub Field,
+    old_balance_sender_ct: pub CipherText,  // encrypted balance from contract
+
+    receiver_address: pub Field,
+    receiver_pubkey: pub EmbeddedCurvePoint,
+    old_balance_receiver_ct: pub CipherText,
+
     token: pub Field,
-    chainId: pub Field,
-    methodTag: pub Field,  // 1=transfer, 2=deposit, 3=withdraw
+    method_tag: pub Field,  // 1=transfer, 2=deposit, 3=withdraw
 ) -> pub (
-    (EmbeddedCurvePoint, EmbeddedCurvePoint),  // sender_new_balance_ct
-    (EmbeddedCurvePoint, EmbeddedCurvePoint),  // recipient_new_balance_ct (or zero for deposit/withdraw)
-    Field  // revealed_amount (for deposit/withdraw, zero for transfer)
+    CipherText,  // new_balance_sender_ct
+    CipherText,  // new_balance_receiver_ct (zero for deposit/withdraw)
+    Field        // revealed_amount (for deposit/withdraw, zero for transfer)
 ) {
-    // Range constraints
-    current_balance.assert_max_bit_size::<40>();
+    // Enforce 40-bit range constraints to prevent overflow
+    current_balance_sender.assert_max_bit_size::<40>();
     operation_amount.assert_max_bit_size::<40>();
 
-    // Verify old balance encryption
-    let old_balance_ct = (old_balance_x1, old_balance_x2);
-    let computed_old_balance = encrypt(sender_pubkey, current_balance, r_old_balance);
-    assert(computed_old_balance == old_balance_ct);
+    // Verify sender's public key matches their private key
+    let computed_sender_pubkey = public_key(sender_priv_key);
+    assert(computed_sender_pubkey == sender_pubkey);
 
-    let mut new_balance = current_balance;
-    let mut revealed_amount = 0;
+    // Verify sender knows the decryption of their old balance
+    let decrypted_old_balance_sender = decrypt(old_balance_sender_ct, sender_priv_key);
+    verify_embedding(decrypted_old_balance_sender, current_balance_sender);
 
-    // Zero point for secondary ciphertext (used when not transfer)
-    let zero_point = EmbeddedCurvePoint { x: 0, y: 0, is_infinite: false };
-    let mut secondary_ct = (zero_point, zero_point);
+    // Initialize outputs
+    let mut new_balance_sender_ct: CipherText = zero_ciphertext();
+    let mut new_balance_receiver_ct: CipherText = zero_ciphertext();
+    let mut revealed_amount: Field = 0;
 
-    // TRANSFER (methodTag == 1) - Private transfer (encrypted -> encrypted)
-    if methodTag == 1 {
-        // Subtract from sender's balance
-        new_balance = current_balance - operation_amount;
-        new_balance.assert_max_bit_size::<40>();
+    // ==================== TRANSFER (method_tag = 1) ====================
+    if method_tag == 1 {
+        // Verify sender has sufficient balance (cast to u64 for comparison)
+        let balance_u64 = current_balance_sender as u64;
+        let amount_u64 = operation_amount as u64;
+        assert(balance_u64 >= amount_u64);
 
-        // Encrypt transfer amount for recipient (keeps both sides private)
-        let transfer_ct = encrypt(recipient_pubkey, operation_amount, r_transfer_recipient);
-        secondary_ct = (transfer_ct.0, transfer_ct.1);
+        // Calculate new sender balance
+        let new_balance_sender = current_balance_sender - operation_amount;
+        new_balance_sender.assert_max_bit_size::<40>();
 
-        // Don't reveal amount (stays encrypted)
-        revealed_amount = 0;
+        // Encrypt new sender balance
+        new_balance_sender_ct = encrypt(sender_pubkey, new_balance_sender, r_new_balance_sender);
+
+        // For receiver: Use homomorphic addition to update their balance
+        // new_receiver_balance = old_receiver_balance + encrypt(transfer_amount, receiver_pubkey)
+        // This way, sender doesn't need receiver's private key!
+        let transfer_amount_ct = encrypt(receiver_pubkey, operation_amount, r_transfer_amount);
+        new_balance_receiver_ct = add_ciphertexts(old_balance_receiver_ct, transfer_amount_ct);
+
+        // The receiver can decrypt their new balance later using their own private key
+        // No need to verify receiver's private key here!
+
+        revealed_amount = 0; // Transfer amounts stay private
+    }
+    // ==================== DEPOSIT (method_tag = 2) ====================
+    else if method_tag == 2 {
+        // Calculate new balance after deposit
+        let new_balance_sender = current_balance_sender + operation_amount;
+        new_balance_sender.assert_max_bit_size::<40>();
+
+        // Encrypt new balance
+        new_balance_sender_ct = encrypt(sender_pubkey, new_balance_sender, r_new_balance_sender);
+
+        // Reveal the deposit amount (contract needs to custody tokens)
+        revealed_amount = operation_amount;
+
+        // Receiver fields unused for deposits (set to zero)
+        new_balance_receiver_ct = zero_ciphertext();
+    }
+    // ==================== WITHDRAW (method_tag = 3) ====================
+    else if method_tag == 3 {
+        // Verify sender has sufficient balance (cast to u64 for comparison)
+        let balance_u64 = current_balance_sender as u64;
+        let amount_u64 = operation_amount as u64;
+        assert(balance_u64 >= amount_u64);
+
+        // Calculate new balance after withdrawal
+        let new_balance_sender = current_balance_sender - operation_amount;
+        new_balance_sender.assert_max_bit_size::<40>();
+
+        // Encrypt new balance
+        new_balance_sender_ct = encrypt(sender_pubkey, new_balance_sender, r_new_balance_sender);
+
+        // Reveal the withdrawal amount (contract needs to release tokens)
+        revealed_amount = operation_amount;
+
+        // Receiver fields unused for withdrawals (set to zero)
+        new_balance_receiver_ct = zero_ciphertext();
+    } else {
+        // Invalid method_tag
+        assert(false);
     }
 
-    // DEPOSIT (methodTag == 2) - Receive money
-    if methodTag == 2 {
-        // Add to balance
-        new_balance = current_balance + operation_amount;
-        new_balance.assert_max_bit_size::<40>();
-        revealed_amount = operation_amount;  // Reveal amount for contract
-    }
-
-    // WITHDRAW (methodTag == 3) - Send money (to any address, becomes plain)
-    if methodTag == 3 {
-        // Subtract from balance (underflow check via subtraction)
-        new_balance = current_balance - operation_amount;
-        new_balance.assert_max_bit_size::<40>();
-        revealed_amount = operation_amount;  // Reveal amount for contract
-    }
-
-    // Encrypt new balance
-    let new_balance_ct = encrypt(sender_pubkey, new_balance, r_new_balance);
-
-    (
-        (new_balance_ct.0, new_balance_ct.1),  // Sender's new balance
-        (secondary_ct.0, secondary_ct.1),       // Recipient's transfer ciphertext (or zeros)
-        revealed_amount                         // Amount (or zero for transfer)
-    )
+    (new_balance_sender_ct, new_balance_receiver_ct, revealed_amount)
 }
 
 // ==================== TESTS ====================
 
 #[test]
-fn test_transfer() {
-    let sender_priv = 42;
-    let sender_pub = public_key(sender_priv);
-    let recipient_priv = 100;
-    let recipient_pub = public_key(recipient_priv);
-
-    let old_balance_ct = encrypt(sender_pub, 1000, 111);
-
-    let (sender_new_ct, recipient_ct, amt) = main(
-        1000, 100, 111, 222, 333,  // transfer 100 from 1000
-        sender_pub, old_balance_ct.0, old_balance_ct.1,
-        recipient_pub,
-        1, 2, 3, 4, 1  // methodTag=1 (transfer)
-    );
-
-    // Sender's new balance should be 900 (encrypted)
-    let sender_new = decrypt((sender_new_ct.0, sender_new_ct.1), sender_priv);
-    verify_embedding(sender_new, 900);
-
-    // Recipient gets encrypted transfer amount (100)
-    let recipient_amount = decrypt((recipient_ct.0, recipient_ct.1), recipient_priv);
-    verify_embedding(recipient_amount, 100);
-
-    // Amount should NOT be revealed (stays private)
-    assert(amt == 0);
-}
-
-#[test]
 fn test_deposit() {
-    let priv_key = 42;
-    let pub_key = public_key(priv_key);
-    let dummy_recipient_pub = public_key(100);  // Not used for deposit
+    // Setup: User with 500 tokens wants to deposit 300 more
+    let sender_priv_key = 42;
+    let sender_pubkey = public_key(sender_priv_key);
 
-    let old_balance_ct = encrypt(pub_key, 500, 111);
+    let current_balance = 500;
+    let deposit_amount = 300;
+    let expected_new_balance = 800;
 
-    let (new_ct, secondary_ct, amt) = main(
-        500, 300, 111, 222, 0,  // r_transfer_recipient=0 (not used)
-        pub_key, old_balance_ct.0, old_balance_ct.1,
-        dummy_recipient_pub,  // Not used for deposit
-        1, 2, 3, 4, 2  // methodTag=2 (deposit)
+    // Encrypt current balance
+    let r_old = 111;
+    let old_balance_ct = encrypt(sender_pubkey, current_balance, r_old);
+
+    // New randomness for new balance
+    let r_new = 222;
+
+    // Unused for deposits
+    let receiver_pubkey = zero_point();
+    let old_balance_receiver_ct = zero_ciphertext();
+
+    let (new_balance_ct, _, revealed_amount) = main(
+        sender_priv_key,
+        current_balance,
+        deposit_amount,
+        r_new,
+        0, // r_transfer_amount unused
+        1, // sender address
+        sender_pubkey,
+        old_balance_ct,
+        2, // receiver address (unused)
+        receiver_pubkey,
+        old_balance_receiver_ct,
+        3, // token address
+        2  // method_tag = 2 (deposit)
     );
 
-    let new_balance = decrypt((new_ct.0, new_ct.1), priv_key);
-    verify_embedding(new_balance, 800);
-    assert(amt == 300);  // Deposit amount revealed
+    // Verify: revealed amount should be the deposit
+    assert(revealed_amount == deposit_amount);
+
+    // Verify: new balance decrypts correctly
+    let decrypted_new_balance = decrypt(new_balance_ct, sender_priv_key);
+    verify_embedding(decrypted_new_balance, expected_new_balance);
 }
 
 #[test]
 fn test_withdraw() {
-    let priv_key = 42;
-    let pub_key = public_key(priv_key);
-    let dummy_recipient_pub = public_key(100);  // Not used for withdraw
+    // Setup: User with 1000 tokens wants to withdraw 200
+    let sender_priv_key = 42;
+    let sender_pubkey = public_key(sender_priv_key);
 
-    let old_balance_ct = encrypt(pub_key, 1000, 111);
+    let current_balance = 1000;
+    let withdraw_amount = 200;
+    let expected_new_balance = 800;
 
-    let (new_ct, secondary_ct, amt) = main(
-        1000, 250, 111, 222, 0,  // r_transfer_recipient=0 (not used)
-        pub_key, old_balance_ct.0, old_balance_ct.1,
-        dummy_recipient_pub,  // Not used for withdraw
-        1, 2, 3, 4, 3  // methodTag=3 (withdraw)
+    // Encrypt current balance
+    let r_old = 111;
+    let old_balance_ct = encrypt(sender_pubkey, current_balance, r_old);
+
+    // New randomness for new balance
+    let r_new = 222;
+
+    // Unused for withdrawals
+    let receiver_pubkey = zero_point();
+    let old_balance_receiver_ct = zero_ciphertext();
+
+    let (new_balance_ct, _, revealed_amount) = main(
+        sender_priv_key,
+        current_balance,
+        withdraw_amount,
+        r_new,
+        0, // r_transfer_amount unused
+        1, // sender address
+        sender_pubkey,
+        old_balance_ct,
+        2, // receiver address (unused)
+        receiver_pubkey,
+        old_balance_receiver_ct,
+        3, // token address
+        3  // method_tag = 3 (withdraw)
     );
 
-    let new_balance = decrypt((new_ct.0, new_ct.1), priv_key);
-    verify_embedding(new_balance, 750);
-    assert(amt == 250);  // Amount revealed for withdraw
+    // Verify: revealed amount should be the withdrawal
+    assert(revealed_amount == withdraw_amount);
+
+    // Verify: new balance decrypts correctly
+    let decrypted_new_balance = decrypt(new_balance_ct, sender_priv_key);
+    verify_embedding(decrypted_new_balance, expected_new_balance);
+}
+
+#[test]
+fn test_transfer() {
+    // Setup: Sender with 1000 tokens transfers 300 to receiver with 500 tokens
+    let sender_priv_key = 42;
+    let sender_pubkey = public_key(sender_priv_key);
+
+    // Receiver's private key is ONLY used in test to verify the result
+    // The sender NEVER needs to know this!
+    let receiver_priv_key = 100;
+    let receiver_pubkey = public_key(receiver_priv_key);
+
+    let sender_balance = 1000;
+    let receiver_balance = 500;
+    let transfer_amount = 300;
+
+    let expected_sender_new_balance = 700;
+    let expected_receiver_new_balance = 800;
+
+    // Encrypt balances
+    let r_old_sender = 111;
+    let old_balance_sender_ct = encrypt(sender_pubkey, sender_balance, r_old_sender);
+
+    let r_old_receiver = 333;
+    let old_balance_receiver_ct = encrypt(receiver_pubkey, receiver_balance, r_old_receiver);
+
+    // New randomness
+    let r_new_sender = 222;
+    let r_transfer = 444; // For encrypting the transfer amount under receiver's key
+
+    let (new_balance_sender_ct, new_balance_receiver_ct, revealed_amount) = main(
+        sender_priv_key,
+        sender_balance,
+        transfer_amount,
+        r_new_sender,
+        r_transfer, // Randomness for encrypting transfer for receiver
+        1, // sender address
+        sender_pubkey,
+        old_balance_sender_ct,
+        2, // receiver address
+        receiver_pubkey,
+        old_balance_receiver_ct,
+        3, // token address
+        1  // method_tag = 1 (transfer)
+    );
+
+    // Verify: amount should NOT be revealed for transfers
+    assert(revealed_amount == 0);
+
+    // Verify: sender's new balance decrypts correctly
+    let decrypted_sender_new = decrypt(new_balance_sender_ct, sender_priv_key);
+    verify_embedding(decrypted_sender_new, expected_sender_new_balance);
+
+    // Verify: receiver's new balance decrypts correctly using RECEIVER'S private key
+    // (which the sender never needed to know!)
+    let decrypted_receiver_new = decrypt(new_balance_receiver_ct, receiver_priv_key);
+    verify_embedding(decrypted_receiver_new, expected_receiver_new_balance);
 }
 
 #[test(should_fail)]
-fn test_insufficient_balance_fails() {
-    let sender_pub = public_key(42);
-    let dummy_recipient_pub = public_key(100);
-    let old_balance_ct = encrypt(sender_pub, 100, 111);
+fn test_insufficient_balance_withdraw() {
+    // Setup: User with 100 tokens tries to withdraw 1000
+    let sender_priv_key = 42;
+    let sender_pubkey = public_key(sender_priv_key);
 
-    let _ = main(
-        100, 200, 111, 222, 0,
-        sender_pub, old_balance_ct.0, old_balance_ct.1,
-        dummy_recipient_pub,
-        1, 2, 3, 4, 3  // Withdraw more than balance - should fail
+    let current_balance = 100;
+    let withdraw_amount = 1000; // More than balance!
+
+    // Encrypt current balance
+    let r_old = 111;
+    let old_balance_ct = encrypt(sender_pubkey, current_balance, r_old);
+
+    let r_new = 222;
+
+    let receiver_pubkey = zero_point();
+    let old_balance_receiver_ct = zero_ciphertext();
+
+    // This should fail due to insufficient balance
+    let (_, _, _) = main(
+        sender_priv_key,
+        current_balance,
+        withdraw_amount,
+        r_new,
+        0, // r_transfer_amount
+        1,
+        sender_pubkey,
+        old_balance_ct,
+        2,
+        receiver_pubkey,
+        old_balance_receiver_ct,
+        3,
+        3  // withdraw
+    );
+}
+
+#[test(should_fail)]
+fn test_insufficient_balance_transfer() {
+    // Setup: Sender with 100 tokens tries to transfer 1000
+    let sender_priv_key = 42;
+    let sender_pubkey = public_key(sender_priv_key);
+
+    let receiver_priv_key = 100;
+    let receiver_pubkey = public_key(receiver_priv_key);
+
+    let sender_balance = 100;
+    let receiver_balance = 500;
+    let transfer_amount = 1000; // More than sender has!
+
+    let r_old_sender = 111;
+    let old_balance_sender_ct = encrypt(sender_pubkey, sender_balance, r_old_sender);
+
+    let r_old_receiver = 333;
+    let old_balance_receiver_ct = encrypt(receiver_pubkey, receiver_balance, r_old_receiver);
+
+    let r_new_sender = 222;
+    let r_transfer = 444;
+
+    // This should fail due to insufficient balance
+    let (_, _, _) = main(
+        sender_priv_key,
+        sender_balance,
+        transfer_amount,
+        r_new_sender,
+        r_transfer,
+        1,
+        sender_pubkey,
+        old_balance_sender_ct,
+        2,
+        receiver_pubkey,
+        old_balance_receiver_ct,
+        3,
+        1  // transfer
     );
 }
