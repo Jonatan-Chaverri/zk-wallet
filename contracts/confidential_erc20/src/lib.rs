@@ -185,6 +185,12 @@ impl ConfidentialERC20 {
     // Expects public key should be two points of the elliptic curve (we should use same elliptic
     // curve as the prover in this case Noir Grumpkin curve to generate this public key)
     pub fn register_user_pk(&mut self, public_key: [u8; 64]) -> Result<(), Vec<u8>> {
+        let sender = self.vm().msg_sender();
+        let user_pk = self._get_user_pk(sender);
+        if user_pk != [0u8; 64] {
+            return Err("User already registered".into());
+        }
+
         // Split the 64 bytes into two 32-byte slices
         let pk_x_bytes = &public_key[..32];
         let pk_y_bytes = &public_key[32..];
@@ -236,18 +242,25 @@ impl ConfidentialERC20 {
     /// amount: pub Field,
     pub fn deposit(
         &mut self,
-        proof_inputs: [u8; 416],
+        proof_inputs: Vec<u8>,
         proof: Vec<u8>,
     ) -> Result<(), Vec<u8>> {
-        self._deposit_widthdraw(proof_inputs, proof, true)
+        let proof_inputs_fixed: [u8; 416] = proof_inputs
+            .clone()
+            .try_into()
+            .map_err(|_| "Failed to convert to [u8; 416]".as_bytes().to_vec())?;
+        self._deposit_widthdraw(proof_inputs_fixed, proof, true)
     }
 
     pub fn withdraw(
         &mut self,
-        proof_inputs: [u8; 416],
+        proof_inputs: Vec<u8>,
         proof: Vec<u8>,
     ) -> Result<(), Vec<u8>> {
-        self._deposit_widthdraw(proof_inputs, proof, false)
+        let proof_inputs_fixed: [u8; 416] = proof_inputs
+            .try_into()
+            .map_err(|_| "Failed to convert to [u8; 416]".as_bytes().to_vec())?;
+        self._deposit_widthdraw(proof_inputs_fixed, proof, false)
     }
 
     /// Confidential balance-to-balance transfer.
@@ -267,10 +280,14 @@ impl ConfidentialERC20 {
     /// token: pub Field
     pub fn transfer_confidential(
         &mut self,
-        proof_inputs: [u8; 704],
+        proof_inputs: Vec<u8>,
         proof: Vec<u8>,
     ) -> Result<(), Vec<u8>> {
         self._non_reentrant()?;
+
+        let proof_inputs_fixed: [u8; 704] = proof_inputs
+            .try_into()
+            .map_err(|_| "Failed to convert to [u8; 416]".as_bytes().to_vec())?;
 
         let from = self.vm().msg_sender();
         let sender_pubkey = self._get_user_pk(from);
@@ -279,9 +296,9 @@ impl ConfidentialERC20 {
             return Err("User not registered".into());
         }
 
-        self._verify_proof(&proof_inputs, &proof)?;
+        self._verify_proof(&proof_inputs_fixed, &proof)?;
 
-        let transfer_proof_inputs = self._decode_transfer_confidential_proof_inputs(proof_inputs);
+        let transfer_proof_inputs = self._decode_transfer_confidential_proof_inputs(proof_inputs_fixed);
 
         let result = self._sanity_checks_for_transfer(from, &transfer_proof_inputs);
         if let Err(err) = result {
@@ -335,6 +352,10 @@ impl ConfidentialERC20 {
 
     pub fn is_supported_token(&self, token: Address) -> bool {
         self.supported_tokens.get(token)
+    }
+
+    pub fn get_user_pk(&self, user: Address) -> [u8; 64] {
+        self._get_user_pk(user)
     }
 }
 
@@ -468,32 +489,57 @@ impl ConfidentialERC20 {
         }
     }
 
-    fn _decode_deposit_withdraw_proof_inputs(&self, proof_inputs: [u8; 416]) -> DepositWidthdrawProofInputs {
+    fn _decode_deposit_withdraw_proof_inputs(
+        &self,
+        proof_inputs: [u8; 416],
+    ) -> Result<DepositWidthdrawProofInputs, Vec<u8>> {
+    
         let amount_bytes: [u8; 32] = proof_inputs[384..416]
             .try_into()
-            .expect("invalid slice length for amount");
-
+            .map_err(|_| "bad amount slice".as_bytes().to_vec())?;
         let amount = U256::from_be_bytes(amount_bytes);
-        DepositWidthdrawProofInputs {
-            user_pubkey: proof_inputs[..64].try_into().unwrap(),
-            current_balance: self._decode_ciphertext(proof_inputs[64..192].try_into().unwrap()),
-            new_balance: self._decode_ciphertext(proof_inputs[192..320].try_into().unwrap()),
-            user_address: Address::from_slice(&proof_inputs[320..352]),
-            token: Address::from_slice(&proof_inputs[352..384]),
+    
+        let user_pubkey: [u8; 64] = proof_inputs[..64]
+            .try_into()
+            .map_err(|_| "bad pubkey slice".as_bytes().to_vec())?;
+    
+        let current_slice: [u8; 128] = proof_inputs[64..192]
+            .try_into()
+            .map_err(|_| "bad current_balance slice".as_bytes().to_vec())?;
+    
+        let new_slice: [u8; 128] = proof_inputs[192..320]
+            .try_into()
+            .map_err(|_| "bad new_balance slice".as_bytes().to_vec())?;
+    
+        let current_balance = self._decode_ciphertext(current_slice);
+        let new_balance = self._decode_ciphertext(new_slice);
+    
+        // Addresses only takes 20 bytes, so we need to only take the last 20 bytes
+        let user_address = Address::from_slice(&proof_inputs[332..352]);
+        let token = Address::from_slice(&proof_inputs[364..384]);
+    
+        Ok(DepositWidthdrawProofInputs {
+            user_pubkey,
+            current_balance,
+            new_balance,
+            user_address,
+            token,
             amount,
-        }
+        })
     }
 
     fn _decode_transfer_confidential_proof_inputs(&self, proof_inputs: [u8; 704]) -> TransferConfidentialProofInputs {
         TransferConfidentialProofInputs {
-            receiver_address: Address::from_slice(&proof_inputs[0..32]),
+            // Addresses only takes 20 bytes, so we need to only take the last 20 bytes
+            receiver_address: Address::from_slice(&proof_inputs[12..32]),
             receiver_pubkey: proof_inputs[32..96].try_into().unwrap(),
             receiver_current_balance: self._decode_ciphertext(proof_inputs[96..224].try_into().unwrap()),
             receiver_new_balance: self._decode_ciphertext(proof_inputs[224..352].try_into().unwrap()),
             sender_pubkey: proof_inputs[352..416].try_into().unwrap(),
             sender_current_balance: self._decode_ciphertext(proof_inputs[416..544].try_into().unwrap()),
             sender_new_balance: self._decode_ciphertext(proof_inputs[544..672].try_into().unwrap()),
-            token: Address::from_slice(&proof_inputs[672..704]),
+            // Addresses only takes 20 bytes, so we need to trim
+            token: Address::from_slice(&proof_inputs[684..704]),
         }
     }
 
@@ -574,7 +620,9 @@ impl ConfidentialERC20 {
 
         self._verify_proof(&proof_inputs, &proof)?;
 
-        let deposit_proof_inputs = self._decode_deposit_withdraw_proof_inputs(proof_inputs);
+        let deposit_proof_inputs = self
+            ._decode_deposit_withdraw_proof_inputs(proof_inputs)
+            .map_err(|_| "Failed to decode deposit/withdraw proof inputs".as_bytes().to_vec())?;
 
         if !self.supported_tokens.get(deposit_proof_inputs.token) {
             self._release_reentrancy();
