@@ -11,6 +11,21 @@ struct Point {
 
 // ==================== HELPER FUNCTIONS ====================
 
+// Negate an elliptic curve point by negating its y-coordinate
+fn negate_point(p: EmbeddedCurvePoint) -> EmbeddedCurvePoint {
+    EmbeddedCurvePoint {
+        x: p.x,
+        y: 0 - p.y,
+        is_infinite: p.is_infinite
+    }
+}
+
+// Homomorphic subtraction: a - b = a + (-b)
+fn subtract_ciphertexts(a: CipherText, b: CipherText) -> CipherText {
+    let negated_b = (negate_point(b.0), negate_point(b.1));
+    add_ciphertexts(a, negated_b)
+}
+
 fn verify_sender(
     sender_priv_key: Field,
     sender_pubkey: EmbeddedCurvePoint,
@@ -54,10 +69,10 @@ fn verify_sufficient_balance(current_balance: Field, amount: Field) {
 fn main(
     // Private inputs (secrets not revealed in proof)
     sender_priv_key: Field,
-    current_balance_sender: Field,  // Sender's plaintext balance
-    transfer_amount: Field,          // Amount to transfer
-    r_new_balance_sender: Field,     // Randomness for sender's new balance
-    r_transfer_amount: Field,        // Randomness for encrypting transfer to receiver
+    current_balance_sender: Field,  // Sender's plaintext balance (witness for decryption & balance check)
+    transfer_amount: Field,          // Amount to transfer (kept private)
+    r_amount_sender: Field,          // Randomness for encrypting transfer amount under sender's key
+    r_amount_receiver: Field,        // Randomness for encrypting transfer amount under receiver's key
 
     // Public inputs (visible in proof) - ORDER MATTERS for contract!
     receiver_address: pub Field,
@@ -68,12 +83,7 @@ fn main(
     sender_old_balance_x1: pub Point,
     sender_old_balance_x2: pub Point,
     token: pub Field
-) -> pub (
-    Point,  // receiver_new_balance_x1
-    Point,  // receiver_new_balance_x2
-    Point,  // sender_new_balance_x1
-    Point   // sender_new_balance_x2
-) {
+) -> pub (Point, Point, Point, Point) {  // Returns (sender_new_x1, sender_new_x2, receiver_new_x1, receiver_new_x2)
     // Reconstruct EmbeddedCurvePoint and CipherText structs from Point structs
     let sender_pubkey_ec = EmbeddedCurvePoint {
         x: sender_pubkey.x,
@@ -101,32 +111,32 @@ fn main(
     transfer_amount.assert_max_bit_size::<40>();
 
     // Verify sender authentication and balance knowledge
+    // This proves the sender knows their private key by decrypting old_balance
     verify_sender(sender_priv_key, sender_pubkey_ec, old_balance_sender_ct, current_balance_sender);
 
     // Verify sender has sufficient balance
     verify_sufficient_balance(current_balance_sender, transfer_amount);
 
-    // Calculate sender's new balance
-    let new_balance_sender = current_balance_sender - transfer_amount;
-    new_balance_sender.assert_max_bit_size::<40>();
+    // Encrypt transfer amount under sender's public key
+    let transfer_amount_sender_ct = encrypt(sender_pubkey_ec, transfer_amount, r_amount_sender);
 
-    // Encrypt sender's new balance
-    let new_balance_sender_ct = encrypt(sender_pubkey_ec, new_balance_sender, r_new_balance_sender);
+    // HOMOMORPHIC SUBTRACTION for sender: new_balance = old_balance - amount
+    let sender_new_balance_ct = subtract_ciphertexts(old_balance_sender_ct, transfer_amount_sender_ct);
 
-    // For receiver: Use homomorphic addition to update their balance
-    // new_receiver_balance = old_receiver_balance + encrypt(transfer_amount, receiver_pubkey)
-    // This way, sender doesn't need receiver's private key!
-    let transfer_amount_ct = encrypt(receiver_pubkey_ec, transfer_amount, r_transfer_amount);
-    let new_balance_receiver_ct = add_ciphertexts(old_balance_receiver_ct, transfer_amount_ct);
+    // Encrypt transfer amount under receiver's public key
+    let transfer_amount_receiver_ct = encrypt(receiver_pubkey_ec, transfer_amount, r_amount_receiver);
 
-    // Return Point structs (serializes to individual Fields)
-    // Order matches contract: receiver_new, then sender_new
-    (
-        Point { x: new_balance_receiver_ct.0.x, y: new_balance_receiver_ct.0.y },
-        Point { x: new_balance_receiver_ct.1.x, y: new_balance_receiver_ct.1.y },
-        Point { x: new_balance_sender_ct.0.x, y: new_balance_sender_ct.0.y },
-        Point { x: new_balance_sender_ct.1.x, y: new_balance_sender_ct.1.y }
-    )
+    // HOMOMORPHIC ADDITION for receiver: new_balance = old_balance + amount
+    // Sender doesn't need receiver's private key!
+    let receiver_new_balance_ct = add_ciphertexts(old_balance_receiver_ct, transfer_amount_receiver_ct);
+
+    // Return both new encrypted balances as 4 Points
+    let sender_new_balance_x1 = Point { x: sender_new_balance_ct.0.x, y: sender_new_balance_ct.0.y };
+    let sender_new_balance_x2 = Point { x: sender_new_balance_ct.1.x, y: sender_new_balance_ct.1.y };
+    let receiver_new_balance_x1 = Point { x: receiver_new_balance_ct.0.x, y: receiver_new_balance_ct.0.y };
+    let receiver_new_balance_x2 = Point { x: receiver_new_balance_ct.1.x, y: receiver_new_balance_ct.1.y };
+
+    (sender_new_balance_x1, sender_new_balance_x2, receiver_new_balance_x1, receiver_new_balance_x2)
 }
 
 // ==================== TESTS ====================
@@ -156,17 +166,17 @@ fn test_transfer_basic() {
     let r_old_receiver = 333;
     let old_balance_receiver_ct = encrypt(receiver_pubkey, receiver_balance, r_old_receiver);
 
-    // New randomness
-    let r_new_sender = 222;
-    let r_transfer = 444; // For encrypting the transfer amount under receiver's key
+    // Randomness for encrypting transfer amount
+    let r_amount_sender = 222;
+    let r_amount_receiver = 444;
 
-    // Call with Point structs
-    let (recv_new_x1, recv_new_x2, send_new_x1, send_new_x2) = main(
+    // Call circuit - it will compute and return both new balances
+    let (sender_new_x1, sender_new_x2, receiver_new_x1, receiver_new_x2) = main(
         sender_priv_key,
         sender_balance,
         transfer_amount,
-        r_new_sender,
-        r_transfer,
+        r_amount_sender,
+        r_amount_receiver,
         2, // receiver address
         Point { x: receiver_pubkey.x, y: receiver_pubkey.y },
         Point { x: old_balance_receiver_ct.0.x, y: old_balance_receiver_ct.0.y },
@@ -177,24 +187,22 @@ fn test_transfer_basic() {
         3  // token address
     );
 
-    // Reconstruct CipherText from returned Points
-    let new_balance_sender_ct: CipherText = (
-        EmbeddedCurvePoint { x: send_new_x1.x, y: send_new_x1.y, is_infinite: false },
-        EmbeddedCurvePoint { x: send_new_x2.x, y: send_new_x2.y, is_infinite: false }
+    // Reconstruct returned balances as CipherTexts
+    let returned_sender_new_balance_ct: CipherText = (
+        EmbeddedCurvePoint { x: sender_new_x1.x, y: sender_new_x1.y, is_infinite: false },
+        EmbeddedCurvePoint { x: sender_new_x2.x, y: sender_new_x2.y, is_infinite: false }
+    );
+    let returned_receiver_new_balance_ct: CipherText = (
+        EmbeddedCurvePoint { x: receiver_new_x1.x, y: receiver_new_x1.y, is_infinite: false },
+        EmbeddedCurvePoint { x: receiver_new_x2.x, y: receiver_new_x2.y, is_infinite: false }
     );
 
-    let new_balance_receiver_ct: CipherText = (
-        EmbeddedCurvePoint { x: recv_new_x1.x, y: recv_new_x1.y, is_infinite: false },
-        EmbeddedCurvePoint { x: recv_new_x2.x, y: recv_new_x2.y, is_infinite: false }
-    );
-
-    // Verify: sender's new balance decrypts correctly
-    let decrypted_sender_new = decrypt(new_balance_sender_ct, sender_priv_key);
+    // Verify: sender's returned new balance decrypts correctly
+    let decrypted_sender_new = decrypt(returned_sender_new_balance_ct, sender_priv_key);
     verify_embedding(decrypted_sender_new, expected_sender_new_balance);
 
-    // Verify: receiver's new balance decrypts correctly using RECEIVER'S private key
-    // (which the sender never needed to know!)
-    let decrypted_receiver_new = decrypt(new_balance_receiver_ct, receiver_priv_key);
+    // Verify: receiver's returned new balance decrypts correctly using RECEIVER'S private key
+    let decrypted_receiver_new = decrypt(returned_receiver_new_balance_ct, receiver_priv_key);
     verify_embedding(decrypted_receiver_new, expected_receiver_new_balance);
 }
 
@@ -217,16 +225,16 @@ fn test_transfer_to_zero_balance() {
     let r_old_receiver = 333;
     let old_balance_receiver_ct = encrypt(receiver_pubkey, receiver_balance, r_old_receiver);
 
-    let r_new_sender = 222;
-    let r_transfer = 444;
+    let r_amount_sender = 222;
+    let r_amount_receiver = 444;
 
-    // Call with Point structs
-    let (recv_new_x1, recv_new_x2, send_new_x1, send_new_x2) = main(
+    // Call circuit - it will compute and return both new balances
+    let (sender_new_x1, sender_new_x2, receiver_new_x1, receiver_new_x2) = main(
         sender_priv_key,
         sender_balance,
         transfer_amount,
-        r_new_sender,
-        r_transfer,
+        r_amount_sender,
+        r_amount_receiver,
         2,
         Point { x: receiver_pubkey.x, y: receiver_pubkey.y },
         Point { x: old_balance_receiver_ct.0.x, y: old_balance_receiver_ct.0.y },
@@ -237,21 +245,20 @@ fn test_transfer_to_zero_balance() {
         3
     );
 
-    // Reconstruct CipherText from returned Points
-    let new_balance_sender_ct: CipherText = (
-        EmbeddedCurvePoint { x: send_new_x1.x, y: send_new_x1.y, is_infinite: false },
-        EmbeddedCurvePoint { x: send_new_x2.x, y: send_new_x2.y, is_infinite: false }
+    // Reconstruct returned balances
+    let returned_sender_new_balance_ct: CipherText = (
+        EmbeddedCurvePoint { x: sender_new_x1.x, y: sender_new_x1.y, is_infinite: false },
+        EmbeddedCurvePoint { x: sender_new_x2.x, y: sender_new_x2.y, is_infinite: false }
+    );
+    let returned_receiver_new_balance_ct: CipherText = (
+        EmbeddedCurvePoint { x: receiver_new_x1.x, y: receiver_new_x1.y, is_infinite: false },
+        EmbeddedCurvePoint { x: receiver_new_x2.x, y: receiver_new_x2.y, is_infinite: false }
     );
 
-    let new_balance_receiver_ct: CipherText = (
-        EmbeddedCurvePoint { x: recv_new_x1.x, y: recv_new_x1.y, is_infinite: false },
-        EmbeddedCurvePoint { x: recv_new_x2.x, y: recv_new_x2.y, is_infinite: false }
-    );
-
-    let decrypted_sender_new = decrypt(new_balance_sender_ct, sender_priv_key);
+    let decrypted_sender_new = decrypt(returned_sender_new_balance_ct, sender_priv_key);
     verify_embedding(decrypted_sender_new, 500);
 
-    let decrypted_receiver_new = decrypt(new_balance_receiver_ct, receiver_priv_key);
+    let decrypted_receiver_new = decrypt(returned_receiver_new_balance_ct, receiver_priv_key);
     verify_embedding(decrypted_receiver_new, 500);
 }
 
@@ -274,16 +281,16 @@ fn test_insufficient_balance_fails() {
     let r_old_receiver = 333;
     let old_balance_receiver_ct = encrypt(receiver_pubkey, receiver_balance, r_old_receiver);
 
-    let r_new_sender = 222;
-    let r_transfer = 444;
+    let r_amount_sender = 222;
+    let r_amount_receiver = 444;
 
     // This should fail due to insufficient balance
-    let (_, _, _, _) = main(
+    let (_sender_new_x1, _sender_new_x2, _receiver_new_x1, _receiver_new_x2) = main(
         sender_priv_key,
         sender_balance,
         transfer_amount,
-        r_new_sender,
-        r_transfer,
+        r_amount_sender,
+        r_amount_receiver,
         2,
         Point { x: receiver_pubkey.x, y: receiver_pubkey.y },
         Point { x: old_balance_receiver_ct.0.x, y: old_balance_receiver_ct.0.y },

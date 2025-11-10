@@ -10,7 +10,14 @@ async function generateVerifier(circuitName, circuitPath, outputPath) {
   const backend = new UltraHonkBackend(circuit.bytecode);
 
   console.log('Generating Solidity verifier contract...');
-  const contract = await backend.getSolidityVerifier();
+  let contract = await backend.getSolidityVerifier();
+
+  // Rename contract to match circuit name
+  console.log(`Renaming contract to ${circuitName}Verifier...`);
+  contract = contract.replace(
+    /contract HonkVerifier/g,
+    `contract ${circuitName}Verifier`
+  );
 
   console.log('Writing verifier contract...');
   writeFileSync(outputPath, contract);
@@ -24,17 +31,17 @@ async function generateAllVerifiers() {
     {
       name: 'Deposit',
       path: './wallet_proof/target/deposit.json',
-      output: './contracts/DepositVerifier.sol'
+      output: './contracts/verifier/contracts/DepositVerifier.sol'
     },
     {
       name: 'Withdraw',
       path: './wallet_proof/target/withdraw.json',
-      output: './contracts/WithdrawVerifier.sol'
+      output: './contracts/verifier/contracts/WithdrawVerifier.sol'
     },
     {
       name: 'Transfer',
       path: './wallet_proof/target/transfer.json',
-      output: './contracts/TransferVerifier.sol'
+      output: './contracts/verifier/contracts/TransferVerifier.sol'
     }
   ];
 
