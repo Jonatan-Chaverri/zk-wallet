@@ -1,7 +1,2 @@
-[package]
-name = "wallet_proof"
-type = "bin"
-authors = ["Gerson"]
-
-[dependencies]
-elgamal = { path = "../noir-v1-elgamal/noir/lib" }
+[workspace]
+members = ["deposit", "withdraw", "transfer"]
