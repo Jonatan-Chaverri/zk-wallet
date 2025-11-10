@@ -10,11 +10,19 @@ export default function HomePage() {
           and generate zero-knowledge proofs locally on Arbitrum Stylus.
         </p>
 
-        <div className="bg-yellow-50 border-2 border-yellow-400 rounded-xl p-4 mb-8 max-w-2xl mx-auto">
-          <p className="text-sm font-semibold text-yellow-900 mb-2">⚠️ Demo Version</p>
-          <p className="text-sm text-yellow-800">
-            This is a demo application. Currently, it only works on <strong>Arbitrum Sepolia</strong> with <strong>WETH tokens</strong>.
-          </p>
+        <div className="flex gap-4 justify-center mb-12">
+          <Link
+            href="/test-proofs"
+            className="px-6 py-3 bg-black text-white rounded-xl hover:bg-gray-900 transition-colors font-medium"
+          >
+            Test Proof Generation
+          </Link>
+          <Link
+            href="/dashboard"
+            className="px-6 py-3 border border-black rounded-xl bg-white text-black hover:bg-gray-50 transition-colors font-medium"
+          >
+            Full Wallet
+          </Link>
         </div>
 
         <div className="grid md:grid-cols-3 gap-6 mt-16">
