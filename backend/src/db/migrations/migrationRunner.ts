@@ -25,6 +25,10 @@ const migrations: Migration[] = [
     name: '004_add_contract_id_to_users_and_transactions',
     sqlFile: '004_add_contract_id_to_users_and_transactions.sql',
   },
+  {
+    name: '005_alter_users_table_public_key',
+    sqlFile: '005_alter_users_table_public_key.sql',
+  },
 ];
 
 let usePostgres = false;

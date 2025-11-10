@@ -6,21 +6,52 @@ import {
   encodeFunctionData,
   parseAbi,
 } from 'viem';
-import { privateKeyToAccount, generatePrivateKey } from 'viem/accounts';
+import { privateKeyToAccount } from 'viem/accounts';
 import { DeployWalletRequest, RegisterPublicKeyRequest } from '../types';
 import { getArbitrumChain } from '../utils/chain';
-import { keccak256, toBytes } from 'viem/utils';
+import { keccak256 } from 'viem/utils';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import path from 'path';
 import fs from 'fs';
-import { getPublicKey } from '@noble/secp256k1';
+import { GrumpkinScalar, Schnorr } from '@aztec/aztec.js';
+import { ContractService } from '../db/services/contractService';
 
 const execAsync = promisify(exec);
 
 const confidentialERC20Abi = parseAbi([
   'function register_user_pk(bytes pk)',
 ]);
+
+// Helper function to convert Fr to 32 bytes
+function frTo32Bytes(f: any): Buffer {
+  const buf = f.toBuffer(); // usually 32 bytes
+  if (buf.length !== 32) {
+    throw new Error(`Fr.toBuffer() expected 32 bytes, got ${buf.length}`);
+  }
+  return Buffer.from(buf);
+}
+
+// Helper function to generate key bytes from public key
+function generateKeyBytes(pk: { x: any; y: any }): Uint8Array {
+  const xBytes = frTo32Bytes(pk.x);
+  const yBytes = frTo32Bytes(pk.y);
+
+  const pubBytes = new Uint8Array(64);
+  pubBytes.set(xBytes, 0);
+  pubBytes.set(yBytes, 32);
+
+  return pubBytes;
+}
+
+// Generate Noir keypair using GrumpkinScalar and Schnorr
+export async function generateNoirKeypair() {
+  const sk = GrumpkinScalar.random();
+  const schnorr = new Schnorr();
+  const pk = await schnorr.computePublicKey(sk); // { x: Fr, y: Fr }
+
+  return { sk, pk }; // pk is Uint8Array[64], sk is GrumpkinScalar
+}
 
 
 // --- Internal helpers ---
@@ -63,31 +94,39 @@ export async function deployUserWallet(params: DeployWalletRequest): Promise<Dep
     throw new Error('DEFAULT_WALLET_PRIVATE_KEY not configured');
   }
 
-  const confErc20 = process.env.CONFIDENTIAL_ERC20 as Address;
-  if (!confErc20) {
-    throw new Error('CONFIDENTIAL_ERC20 not configured');
+  const network = process.env.NETWORK;
+  if (!network) {
+    throw new Error('NETWORK environment variable is not set');
   }
+
+  // Get ConfidentialERC20 contract address from database
+  const contract = await ContractService.getContractByNameAndNetwork(
+    'CONFIDENTIAL_ERC20',
+    network
+  );
+
+  if (!contract) {
+    throw new Error(`Contract with name CONFIDENTIAL_ERC20 and network ${network} not found in database`);
+  }
+
+  const confErc20 = contract.address as Address;
 
   const rpcUrl = process.env.RPC_URL || process.env.ARBITRUM_RPC_URL || 'https://sepolia-rollup.arbitrum.io/rpc';
   
-  // Generate user key pair and derive owner address
-  // 1. Generate random private key
-  const userPrivateKey = generatePrivateKey();
-  console.log('Generated user private key');
+  // Generate user key pair using GrumpkinScalar and Schnorr (like utils.js)
+  const { sk, pk } = await generateNoirKeypair();
+  console.log('Generated user key pair using GrumpkinScalar');
 
-  // 2. Get public key from private key (uncompressed, 65 bytes: 0x04 + x + y)
-  const privateKeyBytes = toBytes(userPrivateKey);
-  const publicKeyBytes = getPublicKey(privateKeyBytes, false); // false = uncompressed
-  
-  // Convert to hex string for keccak256
-  const publicKeyHex = `0x${Buffer.from(publicKeyBytes).toString('hex')}` as `0x${string}`;
-  
-  // Extract x and y coordinates (skip first byte which is 0x04)
-  const x = `0x${Buffer.from(publicKeyBytes.slice(1, 33)).toString('hex')}`;
-  const y = `0x${Buffer.from(publicKeyBytes.slice(33, 65)).toString('hex')}`;
+  // Convert private key to hex string for storage/return
+  const userPrivateKey = `0x${Buffer.from(sk.toBuffer()).toString('hex')}` as `0x${string}`;
 
-  // 3. Convert public key to Ethereum address
-  // Hash the public key with keccak256 and take last 20 bytes (keccak(pubkey)[12..])
+  // Extract x and y coordinates from public key bytes (64 bytes: 32 bytes x + 32 bytes y)
+  const x = `0x${Buffer.from(pk.slice(0, 32)).toString('hex')}`;
+  const y = `0x${Buffer.from(pk.slice(32, 64)).toString('hex')}`;
+
+  // Convert public key to Ethereum address
+  // Hash the public key bytes with keccak256 and take last 20 bytes (keccak(pubkey)[12..])
+  const publicKeyHex = `0x${Buffer.from(pk).toString('hex')}` as `0x${string}`;
   const publicKeyHash = keccak256(publicKeyHex);
   const ownerAddress = (`0x${publicKeyHash.slice(-40)}`) as Address;
 

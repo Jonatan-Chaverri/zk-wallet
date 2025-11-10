@@ -14,6 +14,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@aztec/aztec.js": "^2.1.2",
     "@noble/secp256k1": "^3.0.0",
     "@supabase/supabase-js": "^2.80.0",
     "@types/pg": "^8.15.6",

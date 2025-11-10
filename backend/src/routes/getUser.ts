@@ -57,6 +57,8 @@ router.get('/', async (req, res, next) => {
         id: user.id,
         name: user.name,
         address: user.address,
+        public_key_x: user.public_key_x,
+        public_key_y: user.public_key_y,
         created_at: user.created_at,
       },
     });

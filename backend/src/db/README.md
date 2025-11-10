@@ -55,7 +55,8 @@ The script will automatically:
    - First: Copy and paste the contents of `src/db/migrations/sql/001_create_users_table.sql`
    - Then: Copy and paste the contents of `src/db/migrations/sql/002_create_transactions_table.sql`
    - Then: Copy and paste the contents of `src/db/migrations/sql/003_create_contracts_table.sql`
-   - Finally: Copy and paste the contents of `src/db/migrations/sql/004_add_contract_id_to_users_and_transactions.sql`
+   - Then: Copy and paste the contents of `src/db/migrations/sql/004_add_contract_id_to_users_and_transactions.sql`
+   - Finally: Copy and paste the contents of `src/db/migrations/sql/005_alter_users_table_public_key.sql`
 
 4. After running SQL manually, run `npm run migrate` to record the migrations
 
@@ -81,7 +82,8 @@ CREATE TABLE users (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name VARCHAR(255) NOT NULL,
   address VARCHAR(255) NOT NULL UNIQUE,
-  public_key TEXT NOT NULL,
+  public_key_x TEXT,
+  public_key_y TEXT,
   contract_id UUID REFERENCES contracts(id) ON DELETE CASCADE,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -117,7 +119,8 @@ import { UserService, TransactionService } from './db';
 const user = await UserService.createUser({
   name: 'John Doe',
   address: '0x123...',
-  public_key: '0xabc...',
+  public_key_x: '0xabc...',
+  public_key_y: '0xdef...',
 });
 
 // Get user by address

@@ -3,11 +3,10 @@
 import { useState, useEffect } from 'react';
 import { useAccount, useConnect, useDisconnect } from 'wagmi';
 import { useWalletStore } from '../lib/store/walletStore';
-import { generateBabyJubKeyPair } from '../lib/utils/crypto';
+import { removePrivateKey } from '../lib/utils/privateKeyStorage';
 import type { Address } from 'viem';
 
 export function useWallet() {
-  const [isGeneratingKeyPair, setIsGeneratingKeyPair] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const { address: metamaskAddress, isConnected: isMetamaskConnected } = useAccount();
@@ -19,28 +18,11 @@ export function useWallet() {
     publicKey,
     privateKey,
     setAddress,
-    setKeyPair,
     clearWallet,
   } = useWalletStore();
 
-  // Generate BabyJub key pair when MetaMask connects
-  useEffect(() => {
-    if (isMetamaskConnected && metamaskAddress && !publicKey) {
-      setIsGeneratingKeyPair(true);
-      generateBabyJubKeyPair()
-        .then((keyPair) => {
-          setKeyPair(keyPair);
-          setAddress(metamaskAddress);
-        })
-        .catch((err) => {
-          setError(err.message || 'Failed to generate key pair');
-          console.error('Key pair generation error:', err);
-        })
-        .finally(() => {
-          setIsGeneratingKeyPair(false);
-        });
-    }
-  }, [isMetamaskConnected, metamaskAddress, publicKey, setKeyPair, setAddress]);
+  // Don't generate keys automatically - keys are only created when user registers
+  // The backend generates keys using GrumpkinScalar/Schnorr during registration
 
   // Sync MetaMask address with store
   useEffect(() => {
@@ -71,10 +53,17 @@ export function useWallet() {
     }
   };
 
+  // Use MetaMask address if connected, otherwise use stored address
+  const address = isMetamaskConnected && metamaskAddress ? metamaskAddress : storedAddress;
+
   /**
    * Disconnect wallet
    */
   const disconnect = () => {
+    // Clear private key from localStorage before disconnecting
+    if (address) {
+      removePrivateKey(address);
+    }
     disconnectWagmi();
     clearWallet();
     setError(null);
@@ -84,17 +73,16 @@ export function useWallet() {
       window.dispatchEvent(new Event('username-storage-changed'));
     }
   };
-
-  // Use MetaMask address if connected, otherwise use stored address
-  const address = isMetamaskConnected && metamaskAddress ? metamaskAddress : storedAddress;
-  const isConnected = isMetamaskConnected && !!address && !!publicKey;
+  // User is connected if MetaMask is connected and address exists
+  // Public key is only required after registration (handled by useUser hook)
+  const isConnected = isMetamaskConnected && !!address;
 
   return {
     address: address as Address | null,
     publicKey,
     privateKey,
     isConnected,
-    isConnecting: isConnecting || isGeneratingKeyPair,
+    isConnecting,
     error,
     connectWallet,
     disconnect,

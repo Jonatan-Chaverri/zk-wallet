@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { useWallet } from '../hooks/useWallet';
 import { useUser } from '../hooks/useUser';
 
@@ -14,6 +15,12 @@ export function WalletStatus() {
   const [registerError, setRegisterError] = useState<string | null>(null);
   const [secret, setSecret] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [isMounted, setIsMounted] = useState(false);
+
+  // Prevent hydration mismatch by only rendering wallet-dependent content after mount
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -65,6 +72,20 @@ export function WalletStatus() {
     }
   };
 
+  // Render a placeholder during SSR to prevent hydration mismatch
+  if (!isMounted) {
+    return (
+      <div className="flex flex-col items-end gap-2">
+        <button
+          disabled
+          className="px-6 py-3 bg-black text-white rounded-xl opacity-50 cursor-not-allowed transition-colors font-medium text-sm"
+        >
+          Connect MetaMask
+        </button>
+      </div>
+    );
+  }
+
   if (isConnected && address) {
     return (
       <div className="flex items-center gap-4">
@@ -75,16 +96,16 @@ export function WalletStatus() {
           </p>
         </div>
         
-        {/* Show Register button if not registered, or username button if registered */}
+        {/* Show Register button if not registered, or My Account link if registered */}
         {isLoadingUser ? (
           <div className="px-4 py-2 text-sm text-gray-500">Loading...</div>
         ) : isRegistered && user ? (
-          <button
+          <Link
+            href="/my-account"
             className="px-4 py-2 border border-black rounded-xl bg-white text-black hover:bg-gray-50 transition-colors text-sm font-medium"
-            title={`Username: ${user.name}`}
           >
-            {user.name}
-          </button>
+            My Account
+          </Link>
         ) : (
           <button
             onClick={() => setShowRegisterModal(true)}

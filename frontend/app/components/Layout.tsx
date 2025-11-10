@@ -10,14 +10,20 @@ const USERNAME_STORAGE_KEY = 'zk-wallet-username';
 export function Layout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [isRegistered, setIsRegistered] = useState(false);
+  const [isMounted, setIsMounted] = useState(false);
+
+  // Set mounted state after hydration to prevent server/client mismatch
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
 
   // Check localStorage for username on mount and when it changes
   useEffect(() => {
+    if (!isMounted) return;
+
     const checkRegistration = () => {
-      if (typeof window !== 'undefined') {
-        const username = localStorage.getItem(USERNAME_STORAGE_KEY);
-        setIsRegistered(!!username);
-      }
+      const username = localStorage.getItem(USERNAME_STORAGE_KEY);
+      setIsRegistered(!!username);
     };
 
     checkRegistration();
@@ -41,7 +47,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
       window.removeEventListener('username-storage-changed', handleStorageChange);
       window.removeEventListener('storage', handleStorageEvent);
     };
-  }, []);
+  }, [isMounted]);
 
   const allNavItems = [
     { href: '/', label: 'Home' },
