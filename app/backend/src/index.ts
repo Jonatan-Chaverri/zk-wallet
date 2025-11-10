@@ -40,8 +40,17 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
   });
 });
 
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-  console.log(`CORS enabled for origin: ${CORS_ORIGIN}`);
-});
+// Only start the server if this file is run directly (not imported)
+// This allows the app to be exported for Vercel serverless functions
+if (typeof require !== 'undefined' && require.main === module) {
+  app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+    console.log(`CORS enabled for origin: ${CORS_ORIGIN}`);
+  });
+}
+
+// Export the app for Vercel serverless functions
+export default app;
+// Also export as CommonJS for compatibility
+module.exports = app;
 

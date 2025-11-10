@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useAccount, useConnect, useDisconnect } from 'wagmi';
 import { useWalletStore } from '../lib/store/walletStore';
 import { removePrivateKey } from '../lib/utils/privateKeyStorage';
+import { isMobile, isMetaMaskInstalled, openMetaMaskMobile, isInMetaMaskBrowser } from '../lib/utils/mobile';
 import type { Address } from 'viem';
 
 export function useWallet() {
@@ -35,13 +36,39 @@ export function useWallet() {
 
   /**
    * Connect MetaMask wallet
+   * Handles both desktop (extension) and mobile (app) scenarios
    */
   const connectWallet = async () => {
     setError(null);
+    
+    // Check if we're on mobile
+    const onMobile = isMobile();
+    const hasMetaMask = isMetaMaskInstalled();
+    const inMetaMaskBrowser = isInMetaMaskBrowser();
+    
+    // On mobile, if not in MetaMask browser and no ethereum provider
+    if (onMobile && !inMetaMaskBrowser && !hasMetaMask) {
+      // Try to open MetaMask app via deep link
+      try {
+        openMetaMaskMobile();
+        // Don't set error here - the deep link will handle navigation
+        // User will see instructions if they come back
+        return;
+      } catch (err: any) {
+        setError('Please open this site in MetaMask\'s in-app browser. Tap the menu (☰) in MetaMask and select "Browser", then navigate to this site.');
+        return;
+      }
+    }
+    
+    // Try to find injected connector (works on desktop or in MetaMask mobile browser)
     const injectedConnector = connectors.find((c) => c.id === 'injected' || c.name === 'MetaMask');
     
     if (!injectedConnector) {
-      setError('MetaMask not found. Please install MetaMask extension.');
+      if (onMobile) {
+        setError('Please open this site in MetaMask\'s in-app browser. Tap the menu (☰) in MetaMask and select "Browser".');
+      } else {
+        setError('MetaMask not found. Please install MetaMask extension.');
+      }
       return;
     }
 
