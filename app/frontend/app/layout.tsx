@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
+import "./polyfills"; // Load Buffer polyfill for @aztec/bb.js
 import { Providers } from "./providers";
 
 export const dynamic = 'force-dynamic';

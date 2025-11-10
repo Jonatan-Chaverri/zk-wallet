@@ -1,2 +1,2 @@
 [workspace]
-members = ["deposit", "withdraw", "transfer"]
+members = ["deposit", "withdraw", "transfer", "test_data_generator"]
