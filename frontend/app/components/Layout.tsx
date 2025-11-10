@@ -1,19 +1,57 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { WalletStatus } from './WalletStatus';
 
+const USERNAME_STORAGE_KEY = 'zk-wallet-username';
+
 export function Layout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const [isRegistered, setIsRegistered] = useState(false);
 
-  const navItems = [
+  // Check localStorage for username on mount and when it changes
+  useEffect(() => {
+    const checkRegistration = () => {
+      if (typeof window !== 'undefined') {
+        const username = localStorage.getItem(USERNAME_STORAGE_KEY);
+        setIsRegistered(!!username);
+      }
+    };
+
+    checkRegistration();
+
+    // Listen for custom event when localStorage changes in same window
+    const handleStorageChange = () => {
+      checkRegistration();
+    };
+
+    // Listen for storage events from other tabs/windows
+    const handleStorageEvent = (e: StorageEvent) => {
+      if (e.key === USERNAME_STORAGE_KEY) {
+        checkRegistration();
+      }
+    };
+
+    window.addEventListener('username-storage-changed', handleStorageChange);
+    window.addEventListener('storage', handleStorageEvent);
+
+    return () => {
+      window.removeEventListener('username-storage-changed', handleStorageChange);
+      window.removeEventListener('storage', handleStorageEvent);
+    };
+  }, []);
+
+  const allNavItems = [
     { href: '/', label: 'Home' },
-    { href: '/dashboard', label: 'Dashboard' },
     { href: '/deposit', label: 'Deposit' },
     { href: '/transfer', label: 'Transfer' },
     { href: '/withdraw', label: 'Withdraw' },
   ];
+
+  // Only show Home if user is not registered, show all items if registered
+  const navItems = isRegistered ? allNavItems : [allNavItems[0]];
 
   return (
     <div className="min-h-screen bg-white">

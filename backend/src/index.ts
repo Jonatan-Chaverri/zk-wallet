@@ -1,9 +1,10 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import walletRoutes from './routes/wallet';
 import transactionRoutes from './routes/transaction';
-import configRoutes from './routes/config';
+import registerRoutes from './routes/register';
+import getUserRoutes from './routes/getUser';
+import tokensRoutes from './routes/tokens';
 
 dotenv.config();
 
@@ -19,9 +20,10 @@ app.use(cors({
 app.use(express.json());
 
 // Routes
-app.use('/api/wallet', walletRoutes);
 app.use('/api/transaction', transactionRoutes);
-app.use('/api/config', configRoutes);
+app.use('/api/register', registerRoutes);
+app.use('/api/getUser', getUserRoutes);
+app.use('/api/tokens', tokensRoutes);
 
 // Health check
 app.get('/health', (req, res) => {
