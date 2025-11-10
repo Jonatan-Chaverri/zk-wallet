@@ -1,7 +1,25 @@
 import { Address } from 'viem';
 import type { Ciphertext, BabyJubKeyPair } from '../types';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+/**
+ * Normalize API base URL to ensure it has a protocol
+ * If no protocol is provided, defaults to https://
+ */
+function normalizeApiUrl(url: string): string {
+  if (!url) {
+    return 'http://localhost:3001';
+  }
+  
+  // If URL already has a protocol, return as is
+  if (url.startsWith('http://') || url.startsWith('https://')) {
+    return url;
+  }
+  
+  // Otherwise, prepend https://
+  return `https://${url}`;
+}
+
+const API_BASE_URL = normalizeApiUrl(process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001');
 
 interface ApiResponse<T> {
   success: boolean;
@@ -35,7 +53,10 @@ class ApiClient {
   }
 
   private async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
-    const url = `${this.baseUrl}${endpoint}`;
+    // Ensure baseUrl doesn't end with a slash and endpoint starts with one
+    const baseUrl = this.baseUrl.endsWith('/') ? this.baseUrl.slice(0, -1) : this.baseUrl;
+    const normalizedEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+    const url = `${baseUrl}${normalizedEndpoint}`;
     const response = await fetch(url, {
       ...options,
       headers: {
@@ -197,6 +218,34 @@ class ApiClient {
       }
     );
     return response;
+  }
+
+  /**
+   * Register a user's public key in ConfidentialERC20
+   */
+  async registerPublicKey(params: {
+    confidentialERC20: Address;
+    userWalletAddress: Address;
+    publicKey: {
+      x: string;
+      y: string;
+    };
+  }): Promise<string> {
+    const response = await this.request<{
+      success: boolean;
+      txHash: string;
+    }>(
+      '/api/wallet/register-pk',
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          confidentialERC20: params.confidentialERC20,
+          userWalletAddress: params.userWalletAddress,
+          publicKey: params.publicKey,
+        }),
+      }
+    );
+    return response.txHash;
   }
 }
 

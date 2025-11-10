@@ -1,29 +1,20 @@
 import { Layout } from './components/Layout';
-import Link from 'next/link';
 
 export default function HomePage() {
   return (
     <Layout>
       <div className="max-w-4xl mx-auto text-center py-12">
         <h1 className="text-5xl font-bold mb-6">zkWallet</h1>
-        <p className="text-xl text-gray-700 mb-8 max-w-2xl mx-auto">
+        <p className="text-xl text-gray-700 mb-4 max-w-2xl mx-auto">
           A privacy-preserving wallet that allows you to manage encrypted balances
           and generate zero-knowledge proofs locally on Arbitrum Stylus.
         </p>
 
-        <div className="flex gap-4 justify-center mb-12">
-          <Link
-            href="/dashboard"
-            className="px-6 py-3 bg-black text-white rounded-xl hover:bg-gray-900 transition-colors font-medium"
-          >
-            Get Started
-          </Link>
-          <Link
-            href="/dashboard"
-            className="px-6 py-3 border border-black rounded-xl bg-white text-black hover:bg-gray-50 transition-colors font-medium"
-          >
-            Learn More
-          </Link>
+        <div className="bg-yellow-50 border-2 border-yellow-400 rounded-xl p-4 mb-8 max-w-2xl mx-auto">
+          <p className="text-sm font-semibold text-yellow-900 mb-2">⚠️ Demo Version</p>
+          <p className="text-sm text-yellow-800">
+            This is a demo application. Currently, it only works on <strong>Arbitrum Sepolia</strong> with <strong>WETH tokens</strong>.
+          </p>
         </div>
 
         <div className="grid md:grid-cols-3 gap-6 mt-16">
