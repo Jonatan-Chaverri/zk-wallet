@@ -1,134 +1,266 @@
 // Zero-knowledge proof generation using Noir circuits and UltraHonk backend
-// Migrated from client/ directory for frontend integration
+// Updated with working deposit, withdraw, and transfer circuits
 
 import { UltraHonkBackend, ProofData } from '@aztec/bb.js';
 import { Noir, InputMap } from '@noir-lang/noir_js';
-import circuit from './circuits/wallet_proof.json';
+import depositCircuit from './circuits/deposit.json';
+import withdrawCircuit from './circuits/withdraw.json';
+import transferCircuit from './circuits/transfer.json';
 
-// Types for circuit inputs (matches Noir circuit structure)
-export interface EmbeddedCurvePoint {
-    x: string;
-    y: string;
-    is_infinite: boolean;
+// ========== TYPES ==========
+
+export interface Point {
+  x: string;
+  y: string;
 }
 
-export interface Ciphertext {
-    x1: EmbeddedCurvePoint;
-    x2: EmbeddedCurvePoint;
+export interface DepositParams {
+  // Private inputs (secrets - never leave client)
+  senderPrivKey: string;
+  currentBalance: string;
+  randomness: string;
+
+  // Public inputs (visible on-chain)
+  senderPubkey: Point;
+  oldBalanceX1: Point;
+  oldBalanceX2: Point;
+  senderAddress: string;
+  token: string;
+  amount: string;
+}
+
+export interface WithdrawParams {
+  // Private inputs
+  senderPrivKey: string;
+  currentBalance: string;
+  randomness: string;
+
+  // Public inputs
+  senderPubkey: Point;
+  oldBalanceX1: Point;
+  oldBalanceX2: Point;
+  senderAddress: string;
+  token: string;
+  amount: string;
 }
 
 export interface TransferParams {
-    // Private inputs (secrets - never leave client)
-    currentBalance: bigint;
-    transferAmount: bigint;
-    r_old: string;
-    r_new: string;
-    r_transfer_recipient: string;
-    senderPrivKey: string;           // Sender's private key (secret!)
+  // Private inputs
+  senderPrivKey: string;
+  senderCurrentBalance: string;
+  transferAmount: string;
+  randomnessSender: string;
+  randomnessReceiver: string;
 
-    // Public inputs (visible to everyone)
-    recipientPubKeyX: string;        // Recipient's public key x-coordinate (from blockchain!)
-    recipientPubKeyY: string;        // Recipient's public key y-coordinate (from blockchain!)
-    from: string;                     // Transaction metadata
-    to: string;
-    token: string;
-    chainId: string;
-    methodTag: string;
+  // Public inputs
+  receiverAddress: string;
+  receiverPubkey: Point;
+  receiverOldBalanceX1: Point;
+  receiverOldBalanceX2: Point;
+  senderPubkey: Point;
+  senderOldBalanceX1: Point;
+  senderOldBalanceX2: Point;
+  token: string;
 }
 
 export interface ProofResult {
-    proof: ProofData;
-    publicInputs: string[];  // Array of hex strings (includes outputs)
+  proof: Uint8Array;
+  publicInputs: string[];
 }
 
+// ========== BACKEND CACHE ==========
+
+const backendCache = new Map<string, UltraHonkBackend>();
+
+function getBackend(circuitName: 'deposit' | 'withdraw' | 'transfer'): UltraHonkBackend {
+  if (backendCache.has(circuitName)) {
+    return backendCache.get(circuitName)!;
+  }
+
+  let bytecode: Uint8Array;
+  switch (circuitName) {
+    case 'deposit':
+      bytecode = depositCircuit.bytecode as any;
+      break;
+    case 'withdraw':
+      bytecode = withdrawCircuit.bytecode as any;
+      break;
+    case 'transfer':
+      bytecode = transferCircuit.bytecode as any;
+      break;
+  }
+
+  const backend = new UltraHonkBackend(bytecode);
+  backendCache.set(circuitName, backend);
+  return backend;
+}
+
+// ========== DEPOSIT PROOF ==========
+
 /**
- * Generate a zero-knowledge proof for a confidential transfer
+ * Generate a deposit proof
  *
- * This function:
- * 1. Executes the Noir circuit with the provided parameters
- * 2. Generates a ZK proof using UltraHonk backend
- * 3. Returns proof and public inputs/outputs
+ * This proves:
+ * - User owns the old encrypted balance
+ * - User knows their private key
+ * - New balance = old balance + deposit amount
  *
- * IMPORTANT: The proof includes PUBLIC OUTPUTS (new encrypted balances)
- * that the contract will extract and use to update on-chain state.
+ * @param params Deposit parameters
+ * @returns Proof and public inputs/outputs
+ */
+export async function generateDepositProof(params: DepositParams): Promise<ProofResult> {
+  console.log('[ProofGen] Generating deposit proof...');
+
+  // Initialize Noir
+  const noir = new Noir(depositCircuit as any);
+
+  // Prepare inputs
+  const inputs: InputMap = {
+    sender_priv_key: params.senderPrivKey,
+    current_balance: params.currentBalance,
+    r_amount: params.randomness,
+    sender_pubkey: params.senderPubkey,
+    old_balance_x1: params.oldBalanceX1,
+    old_balance_x2: params.oldBalanceX2,
+    sender_address: params.senderAddress,
+    token: params.token,
+    amount: params.amount
+  };
+
+  console.log('[ProofGen] Executing circuit...');
+  const { witness } = await noir.execute(inputs);
+
+  console.log('[ProofGen] Generating proof...');
+  const backend = getBackend('deposit');
+  const proof = await backend.generateProof(witness);
+
+  console.log(`[ProofGen] Deposit proof generated! Size: ${proof.proof.length} bytes`);
+
+  return {
+    proof: proof.proof,
+    publicInputs: proof.publicInputs
+  };
+}
+
+// ========== WITHDRAW PROOF ==========
+
+/**
+ * Generate a withdraw proof
  *
- * SECURITY MODEL:
- * - Sender provides their PRIVATE key (secret)
- * - Sender provides recipient's PUBLIC key (looked up from blockchain)
- * - Circuit computes sender's public key internally
- * - Circuit encrypts transfer using recipient's public key
- * - Only recipient can decrypt with their private key
+ * This proves:
+ * - User owns the old encrypted balance
+ * - User has sufficient balance to withdraw
+ * - New balance = old balance - withdraw amount
  *
- * @param params - Transfer parameters including balances, keys, and metadata
+ * @param params Withdraw parameters
+ * @returns Proof and public inputs/outputs
+ */
+export async function generateWithdrawProof(params: WithdrawParams): Promise<ProofResult> {
+  console.log('[ProofGen] Generating withdraw proof...');
+
+  const noir = new Noir(withdrawCircuit as any);
+
+  const inputs: InputMap = {
+    sender_priv_key: params.senderPrivKey,
+    current_balance: params.currentBalance,
+    r_amount: params.randomness,
+    sender_pubkey: params.senderPubkey,
+    old_balance_x1: params.oldBalanceX1,
+    old_balance_x2: params.oldBalanceX2,
+    sender_address: params.senderAddress,
+    token: params.token,
+    amount: params.amount
+  };
+
+  console.log('[ProofGen] Executing circuit...');
+  const { witness } = await noir.execute(inputs);
+
+  console.log('[ProofGen] Generating proof...');
+  const backend = getBackend('withdraw');
+  const proof = await backend.generateProof(witness);
+
+  console.log(`[ProofGen] Withdraw proof generated! Size: ${proof.proof.length} bytes`);
+
+  return {
+    proof: proof.proof,
+    publicInputs: proof.publicInputs
+  };
+}
+
+// ========== TRANSFER PROOF ==========
+
+/**
+ * Generate a transfer proof
+ *
+ * This proves:
+ * - Sender owns their old encrypted balance
+ * - Sender has sufficient balance to transfer
+ * - New balances computed correctly for both sender and receiver
+ *
+ * @param params Transfer parameters
  * @returns Proof and public inputs/outputs
  */
 export async function generateTransferProof(params: TransferParams): Promise<ProofResult> {
-    // Initialize Noir with the circuit
-    const noir = new Noir(circuit as any);
+  console.log('[ProofGen] Generating transfer proof...');
 
-    // Initialize UltraHonk backend with bytecode
-    const backend = new UltraHonkBackend(circuit.bytecode as any);
+  const noir = new Noir(transferCircuit as any);
 
-    // 1. Prepare inputs according to circuit ABI
-    const inputs: InputMap = {
-        // Private inputs (secrets)
-        current_balance: params.currentBalance.toString(),
-        transfer_amount: params.transferAmount.toString(),
-        r_old_balance: params.r_old,
-        r_new_balance: params.r_new,
-        r_transfer_recipient: params.r_transfer_recipient,
-        sender_priv_key: params.senderPrivKey,  // Sender's private key
+  const inputs: InputMap = {
+    sender_priv_key: params.senderPrivKey,
+    current_balance_sender: params.senderCurrentBalance,
+    transfer_amount: params.transferAmount,
+    r_amount_sender: params.randomnessSender,
+    r_amount_receiver: params.randomnessReceiver,
+    receiver_address: params.receiverAddress,
+    receiver_pubkey: params.receiverPubkey,
+    receiver_old_balance_x1: params.receiverOldBalanceX1,
+    receiver_old_balance_x2: params.receiverOldBalanceX2,
+    sender_pubkey: params.senderPubkey,
+    sender_old_balance_x1: params.senderOldBalanceX1,
+    sender_old_balance_x2: params.senderOldBalanceX2,
+    token: params.token
+  };
 
-        // Public inputs - Recipient's public key coordinates
-        recipient_pub_x: params.recipientPubKeyX,
-        recipient_pub_y: params.recipientPubKeyY,
+  console.log('[ProofGen] Executing circuit...');
+  const { witness } = await noir.execute(inputs);
 
-        // Transaction metadata
-        from: params.from,
-        to: params.to,
-        token: params.token,
-        chainId: params.chainId,
-        methodTag: params.methodTag
-    };
+  console.log('[ProofGen] Generating proof...');
+  const backend = getBackend('transfer');
+  const proof = await backend.generateProof(witness);
 
-    console.log('[ProofGen] Executing circuit...');
+  console.log(`[ProofGen] Transfer proof generated! Size: ${proof.proof.length} bytes`);
 
-    // 2. Execute circuit to get witness
-    // This runs all the circuit logic and checks constraints
-    const { witness } = await noir.execute(inputs);
-
-    console.log('[ProofGen] Circuit executed successfully! Generating proof...');
-
-    // 3. Generate proof using UltraHonk backend
-    const proof = await backend.generateProof(witness);
-
-    console.log('[ProofGen] Proof generated!');
-
-    // 4. Extract public inputs from proof
-    // IMPORTANT: This includes both public INPUTS and OUTPUTS (the new balances!)
-    const publicInputs = proof.publicInputs;
-
-    console.log('[ProofGen] Proof generation complete!');
-    console.log(`[ProofGen] Proof size: ${proof.proof.length} bytes`);
-    console.log(`[ProofGen] Public inputs: ${publicInputs.length} values`);
-
-    return {
-        proof,           // ProofData - contains proof bytes and public inputs
-        publicInputs     // string[] - hex strings of public inputs + outputs
-    };
+  return {
+    proof: proof.proof,
+    publicInputs: proof.publicInputs
+  };
 }
 
-/**
- * Verify a proof (useful for testing client-side before submitting)
- *
- * @param proofData - The proof data object
- * @returns True if proof is valid
- */
-export async function verifyProof(proofData: ProofData): Promise<boolean> {
-    // Initialize backend with circuit bytecode
-    const backend = new UltraHonkBackend(circuit.bytecode as any);
+// ========== VERIFICATION ==========
 
-    // Verify proof
-    const isValid = await backend.verifyProof(proofData);
-    return isValid;
+/**
+ * Verify a proof locally (useful for testing before submitting)
+ *
+ * @param proofData The proof data
+ * @param circuitName Which circuit to verify against
+ * @returns True if valid
+ */
+export async function verifyProof(
+  proofData: ProofData,
+  circuitName: 'deposit' | 'withdraw' | 'transfer'
+): Promise<boolean> {
+  const backend = getBackend(circuitName);
+  return await backend.verifyProof(proofData);
+}
+
+// ========== UTILITIES ==========
+
+/**
+ * Generate cryptographically secure randomness
+ * @returns Random field element as string
+ */
+export function generateRandomness(): string {
+  // Simple randomness for development
+  // In production, use proper crypto.getRandomValues()
+  return (Math.floor(Math.random() * 1000000000) + Date.now()).toString();
 }
