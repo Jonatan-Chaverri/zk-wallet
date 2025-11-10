@@ -45,7 +45,7 @@ export function useContracts() {
 
   const fetchEncryptedBalance = async (token: Address) => {
     if (!address) {
-      throw new Error('Wallet not created');
+      throw new Error('Wallet not connected');
     }
 
     // Use backend API to fetch encrypted balance

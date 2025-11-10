@@ -46,104 +46,6 @@ class ApiClient {
   }
 
   /**
-   * Deploy a new UserWallet contract
-   */
-  async deployWallet(params: {
-    owner: Address;
-    confidentialERC20: Address;
-  }): Promise<Address> {
-    const response = await this.request<ApiResponse<{ walletAddress: Address }>>(
-      '/api/wallet/deploy',
-      {
-        method: 'POST',
-        body: JSON.stringify(params),
-      }
-    );
-    return response.walletAddress;
-  }
-
-  /**
-   * Register user's public key in ConfidentialERC20
-   */
-  async registerPublicKey(params: {
-    confidentialERC20: Address;
-    userWalletAddress: Address;
-    publicKey: BabyJubKeyPair['publicKey'];
-  }): Promise<string> {
-    const response = await this.request<ApiResponse<{ txHash: string }>>(
-      '/api/wallet/register-pk',
-      {
-        method: 'POST',
-        body: JSON.stringify(params),
-      }
-    );
-    return response.txHash;
-  }
-
-  /**
-   * Submit a deposit transaction
-   */
-  async submitDeposit(params: {
-    userWalletAddress: Address;
-    tokenAddress: Address;
-    amount: string;
-    newBalance: Ciphertext;
-    to: Address;
-  }): Promise<string> {
-    const response = await this.request<ApiResponse<{ txHash: string }>>(
-      '/api/transaction/deposit',
-      {
-        method: 'POST',
-        body: JSON.stringify(params),
-      }
-    );
-    return response.txHash;
-  }
-
-  /**
-   * Submit a transfer transaction
-   */
-  async submitTransfer(params: {
-    userWalletAddress: Address;
-    tokenAddress: Address;
-    recipient: Address;
-    fromNewBalance: Ciphertext;
-    toNewBalance: Ciphertext;
-    proofInputs: string;
-    proof: string;
-  }): Promise<string> {
-    const response = await this.request<ApiResponse<{ txHash: string }>>(
-      '/api/transaction/transfer',
-      {
-        method: 'POST',
-        body: JSON.stringify(params),
-      }
-    );
-    return response.txHash;
-  }
-
-  /**
-   * Submit a withdraw transaction
-   */
-  async submitWithdraw(params: {
-    userWalletAddress: Address;
-    tokenAddress: Address;
-    recipient: Address;
-    newBalance: Ciphertext;
-    proofInputs: string;
-    proof: string;
-  }): Promise<string> {
-    const response = await this.request<ApiResponse<{ txHash: string }>>(
-      '/api/transaction/withdraw',
-      {
-        method: 'POST',
-        body: JSON.stringify(params),
-      }
-    );
-    return response.txHash;
-  }
-
-  /**
    * Get application configuration from backend
    */
   async getConfig(): Promise<AppConfig> {
@@ -163,16 +65,106 @@ class ApiClient {
   }
 
   /**
-   * Get encrypted balance for a user
+   * Get user by address or username
    */
-  async getEncryptedBalance(token: Address, user: Address): Promise<Ciphertext> {
-    const response = await this.request<ApiResponse<{ balance: Ciphertext }>>(
-      `/api/config/balance?token=${token}&user=${user}`,
+  async getUser(params: { address?: string; username?: string }): Promise<{
+    success: boolean;
+    user: {
+      id: string;
+      name: string;
+      address: string;
+      created_at: string;
+    } | null;
+  }> {
+    const queryParams = new URLSearchParams();
+    if (params.address) queryParams.append('address', params.address);
+    if (params.username) queryParams.append('username', params.username);
+
+    try {
+      const response = await this.request<{
+        success: boolean;
+        user: {
+          id: string;
+          name: string;
+          address: string;
+          created_at: string;
+        };
+      }>(
+        `/api/getUser?${queryParams.toString()}`,
+        {
+          method: 'GET',
+        }
+      );
+      return response;
+    } catch (error) {
+      return {
+        success: false,
+        user: null,
+      };
+    }
+  }
+
+  /**
+   * Register a new user
+   */
+  async register(params: {
+    address: string;
+    username: string;
+  }): Promise<{
+    success: boolean;
+    user: {
+      id: string;
+      address: string;
+      username: string;
+      created_at: string;
+    };
+    secret: string;
+  }> {
+    const response = await this.request<{
+      success: boolean;
+      user: {
+        id: string;
+        address: string;
+        username: string;
+        created_at: string;
+      };
+      secret: string;
+    }>(
+      '/api/register',
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          address: params.address,
+          username: params.username,
+        }),
+      }
+    );
+    return response;
+  }
+
+  /**
+   * Get available tokens
+   */
+  async getTokens(): Promise<{
+    tokens: Array<{
+      name: string;
+      network: string;
+      address: string;
+    }>;
+  }> {
+    const response = await this.request<{
+      tokens: Array<{
+        name: string;
+        network: string;
+        address: string;
+      }>;
+    }>(
+      '/api/tokens',
       {
         method: 'GET',
       }
     );
-    return response.balance;
+    return response;
   }
 }
 

@@ -1,110 +1,48 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Layout } from '../components/Layout';
-import { ProofGenerator } from '../components/ProofGenerator';
 import { useWallet } from '../hooks/useWallet';
-import { useContracts } from '../hooks/useContracts';
-import { useProofs } from '../hooks/useProofs';
-import { encryptValue } from '../lib/utils/crypto';
-import { Address, parseUnits } from 'viem';
 import { apiClient } from '../lib/utils/api';
-import { useEffect } from 'react';
 
 export default function TransferPage() {
-  const { address, publicKey, isConnected, createWallet, isCreating, isRegistering } = useWallet();
-  const { userWallet, fetchEncryptedBalance } = useContracts();
-  const { generateTransfer, isGenerating } = useProofs();
+  const { isConnected, connectWallet, isConnecting, privateKey } = useWallet();
 
-  const [tokenAddress, setTokenAddress] = useState('');
-  const [recipient, setRecipient] = useState('');
   const [amount, setAmount] = useState('');
-  const [decimals, setDecimals] = useState('18');
-  const [recipientPublicKey, setRecipientPublicKey] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
-  const [chainId, setChainId] = useState<bigint>(BigInt('23011913')); // Default fallback
+  const [token, setToken] = useState('');
+  const [receiver, setReceiver] = useState('');
+  const [privateKeyInput, setPrivateKeyInput] = useState('');
+  const [tokens, setTokens] = useState<Array<{ name: string; network: string; address: string }>>([]);
+  const [isLoadingTokens, setIsLoadingTokens] = useState(false);
 
-  // Fetch chainId from backend config (but keep it in frontend for proof generation)
   useEffect(() => {
-    apiClient.getConfig().then((config) => {
-      setChainId(BigInt(config.chainId));
-    }).catch(() => {
-      // Keep default if fetch fails
-    });
-  }, []);
-
-  const handleTransfer = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!address || !publicKey || !userWallet || !isConnected) {
-      setError('Please connect your wallet');
-      return;
-    }
-
-    setIsSubmitting(true);
-    setError(null);
-    setSuccess(null);
-
-    try {
-      // Get current balances
-      const fromBalance = await fetchEncryptedBalance(tokenAddress as Address);
-      const toBalance = await fetchEncryptedBalance(recipient as Address);
-      
-      // Parse amount
-      const amountBigInt = parseUnits(amount, parseInt(decimals));
-
-      // Parse recipient public key
-      let recipientPk;
+    const fetchTokens = async () => {
+      setIsLoadingTokens(true);
       try {
-        recipientPk = JSON.parse(recipientPublicKey);
-      } catch {
-        // If not JSON, assume it's just the x coordinate
-        recipientPk = { x: recipientPublicKey, y: recipientPublicKey };
+        const response = await apiClient.getTokens();
+        setTokens(response.tokens);
+        console.log('Available tokens:', response.tokens.map(t => t.name));
+      } catch (error) {
+        console.error('Failed to fetch tokens:', error);
+      } finally {
+        setIsLoadingTokens(false);
       }
+    };
 
-      // Encrypt new balances
-      // TODO: Use homomorphic operations in Noir
-      const fromNewBalance = await encryptValue(amountBigInt, publicKey);
-      const toNewBalance = await encryptValue(amountBigInt, recipientPk);
-
-      // Generate ZK proof
-      const proofResult = await generateTransfer({
-        fromOldBalance: fromBalance,
-        toOldBalance: toBalance,
-        amount: amountBigInt,
-        fromNewBalance,
-        toNewBalance,
-        fromPublicKey: publicKey,
-        toPublicKey: recipientPk,
-        chainId,
-        contractAddress: userWallet,
-      });
-
-      // Prepare proof inputs (amount as first 32 bytes)
-      const amountBytes = new Uint8Array(32);
-      const view = new DataView(amountBytes.buffer);
-      view.setBigUint64(24, amountBigInt, false); // big-endian
-      const proofInputs = `0x${Array.from(amountBytes).map(b => b.toString(16).padStart(2, '0')).join('')}`;
-
-      // Submit transaction via backend API
-      const hash = await apiClient.submitTransfer({
-        userWalletAddress: userWallet,
-        tokenAddress: tokenAddress as Address,
-        recipient: recipient as Address,
-        fromNewBalance,
-        toNewBalance,
-        proofInputs,
-        proof: proofResult.proof,
-      });
-
-      setSuccess(`Transaction submitted: ${hash}`);
-    } catch (err: any) {
-      setError(err.message || 'Failed to transfer');
-      console.error('Transfer error:', err);
-    } finally {
-      setIsSubmitting(false);
+    if (isConnected) {
+      fetchTokens();
     }
+  }, [isConnected]);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    // No backend calls for now - just log the values
+    console.log('Transfer:', { 
+      amount, 
+      token, 
+      receiver, 
+      private_key: privateKeyInput || privateKey 
+    });
   };
 
   if (!isConnected) {
@@ -112,13 +50,13 @@ export default function TransferPage() {
       <Layout>
         <div className="max-w-2xl mx-auto">
           <h1 className="text-3xl font-bold mb-6">Transfer</h1>
-          <p className="text-gray-600 mb-4">Please create a wallet to transfer tokens.</p>
+          <p className="text-gray-600 mb-4">Please connect your MetaMask wallet to transfer tokens.</p>
           <button
-            onClick={createWallet}
-            disabled={isCreating || isRegistering}
+            onClick={connectWallet}
+            disabled={isConnecting}
             className="px-6 py-3 bg-black text-white rounded-xl hover:bg-gray-900 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium"
           >
-            {isCreating ? 'Deploying...' : isRegistering ? 'Registering...' : 'Create Wallet'}
+            {isConnecting ? 'Connecting...' : 'Connect MetaMask'}
           </button>
         </div>
       </Layout>
@@ -130,107 +68,91 @@ export default function TransferPage() {
       <div className="max-w-2xl mx-auto">
         <h1 className="text-3xl font-bold mb-6">Transfer Tokens</h1>
 
-        <ProofGenerator>
-          <form onSubmit={handleTransfer} className="bg-white border border-black rounded-xl p-6 shadow-lg space-y-6">
-            <div>
-              <label htmlFor="token" className="block text-sm font-medium mb-2">
-                Token Address
-              </label>
-              <input
-                id="token"
-                type="text"
-                value={tokenAddress}
-                onChange={(e) => setTokenAddress(e.target.value)}
-                placeholder="0x..."
-                required
-                className="w-full px-4 py-2 border border-black rounded-lg focus:outline-none focus:ring-2 focus:ring-black"
-              />
-            </div>
+        <form onSubmit={handleSubmit} className="bg-white border border-black rounded-xl p-6 shadow-lg space-y-6">
+          <div>
+            <label htmlFor="amount" className="block text-sm font-medium mb-2">
+              Amount
+            </label>
+            <input
+              id="amount"
+              type="number"
+              step="any"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              placeholder="0.0"
+              required
+              className="w-full px-4 py-2 border border-black rounded-lg focus:outline-none focus:ring-2 focus:ring-black"
+            />
+          </div>
 
-            <div>
-              <label htmlFor="recipient" className="block text-sm font-medium mb-2">
-                Recipient Address
-              </label>
-              <input
-                id="recipient"
-                type="text"
-                value={recipient}
-                onChange={(e) => setRecipient(e.target.value)}
-                placeholder="0x..."
-                required
-                className="w-full px-4 py-2 border border-black rounded-lg focus:outline-none focus:ring-2 focus:ring-black"
-              />
-            </div>
-
-            <div>
-              <label htmlFor="recipientPk" className="block text-sm font-medium mb-2">
-                Recipient Public Key (JSON or x coordinate)
-              </label>
-              <input
-                id="recipientPk"
-                type="text"
-                value={recipientPublicKey}
-                onChange={(e) => setRecipientPublicKey(e.target.value)}
-                placeholder='{"x":"0x...","y":"0x..."}'
-                required
-                className="w-full px-4 py-2 border border-black rounded-lg focus:outline-none focus:ring-2 focus:ring-black font-mono text-sm"
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label htmlFor="amount" className="block text-sm font-medium mb-2">
-                  Amount
-                </label>
-                <input
-                  id="amount"
-                  type="number"
-                  step="any"
-                  value={amount}
-                  onChange={(e) => setAmount(e.target.value)}
-                  placeholder="0.0"
-                  required
-                  className="w-full px-4 py-2 border border-black rounded-lg focus:outline-none focus:ring-2 focus:ring-black"
-                />
-              </div>
-
-              <div>
-                <label htmlFor="decimals" className="block text-sm font-medium mb-2">
-                  Decimals
-                </label>
-                <input
-                  id="decimals"
-                  type="number"
-                  value={decimals}
-                  onChange={(e) => setDecimals(e.target.value)}
-                  placeholder="18"
-                  required
-                  className="w-full px-4 py-2 border border-black rounded-lg focus:outline-none focus:ring-2 focus:ring-black"
-                />
-              </div>
-            </div>
-
-            {error && (
-              <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
-                {error}
-              </div>
-            )}
-
-            {success && (
-              <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-green-700 text-sm">
-                {success}
-              </div>
-            )}
-
-            <button
-              type="submit"
-              disabled={isSubmitting || isGenerating}
-              className="w-full px-6 py-3 bg-black text-white rounded-xl hover:bg-gray-900 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium"
+          <div>
+            <label htmlFor="token" className="block text-sm font-medium mb-2">
+              Token
+            </label>
+            <select
+              id="token"
+              value={token}
+              onChange={(e) => setToken(e.target.value)}
+              required
+              disabled={isLoadingTokens || tokens.length === 0}
+              className="w-full px-4 py-2 border border-black rounded-lg focus:outline-none focus:ring-2 focus:ring-black font-mono text-sm bg-white disabled:bg-gray-100 disabled:cursor-not-allowed"
             >
-              {isSubmitting || isGenerating ? 'Processing...' : 'Transfer'}
-            </button>
-          </form>
-        </ProofGenerator>
+              <option value="">
+                {isLoadingTokens ? 'Loading tokens...' : tokens.length === 0 ? 'No tokens available' : 'Select a token'}
+              </option>
+              {tokens.map((t) => (
+                <option key={t.address} value={t.address}>
+                  {t.name} ({t.network})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label htmlFor="receiver" className="block text-sm font-medium mb-2">
+              Receiver Address or Username
+            </label>
+            <input
+              id="receiver"
+              type="text"
+              value={receiver}
+              onChange={(e) => setReceiver(e.target.value)}
+              placeholder="0x... or username"
+              required
+              className="w-full px-4 py-2 border border-black rounded-lg focus:outline-none focus:ring-2 focus:ring-black"
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              Enter either a wallet address (0x...) or a username
+            </p>
+          </div>
+
+          <div>
+            <label htmlFor="private_key" className="block text-sm font-medium mb-2">
+              Private Key
+            </label>
+            <input
+              id="private_key"
+              type="password"
+              value={privateKeyInput}
+              onChange={(e) => setPrivateKeyInput(e.target.value)}
+              placeholder={privateKey ? 'Using wallet private key (or enter custom)' : 'Enter private key'}
+              required={!privateKey}
+              className="w-full px-4 py-2 border border-black rounded-lg focus:outline-none focus:ring-2 focus:ring-black font-mono text-sm"
+            />
+            {privateKey && (
+              <p className="text-xs text-gray-500 mt-1">
+                Using private key from connected wallet. You can override it above.
+              </p>
+            )}
+          </div>
+
+          <button
+            type="submit"
+            className="w-full px-6 py-3 bg-black text-white rounded-xl hover:bg-gray-900 transition-colors font-medium"
+          >
+            Transfer
+          </button>
+        </form>
       </div>
     </Layout>
   );

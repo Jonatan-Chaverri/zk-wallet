@@ -6,7 +6,7 @@ import { TxHistory } from '../components/TxHistory';
 import { useWallet } from '../hooks/useWallet';
 
 export default function DashboardPage() {
-  const { isConnected, createWallet, isCreating, isRegistering } = useWallet();
+  const { isConnected, connectWallet, isConnecting } = useWallet();
 
   if (!isConnected) {
     return (
@@ -14,14 +14,14 @@ export default function DashboardPage() {
         <div className="max-w-4xl mx-auto text-center py-12">
           <h1 className="text-3xl font-bold mb-4">Dashboard</h1>
           <p className="text-gray-600 mb-6">
-            Please create a wallet to view your dashboard.
+            Please connect your MetaMask wallet to view your dashboard.
           </p>
           <button
-            onClick={createWallet}
-            disabled={isCreating || isRegistering}
+            onClick={connectWallet}
+            disabled={isConnecting}
             className="px-6 py-3 bg-black text-white rounded-xl hover:bg-gray-900 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium"
           >
-            {isCreating ? 'Deploying...' : isRegistering ? 'Registering...' : 'Create Wallet'}
+            {isConnecting ? 'Connecting...' : 'Connect MetaMask'}
           </button>
         </div>
       </Layout>
