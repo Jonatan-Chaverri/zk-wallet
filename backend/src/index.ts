@@ -5,6 +5,7 @@ import transactionRoutes from './routes/transaction';
 import registerRoutes from './routes/register';
 import getUserRoutes from './routes/getUser';
 import tokensRoutes from './routes/tokens';
+import configRoutes from './routes/config';
 
 dotenv.config();
 
@@ -24,6 +25,7 @@ app.use('/api/transaction', transactionRoutes);
 app.use('/api/register', registerRoutes);
 app.use('/api/getUser', getUserRoutes);
 app.use('/api/tokens', tokensRoutes);
+app.use('/api/config', configRoutes);
 
 // Health check
 app.get('/health', (req, res) => {

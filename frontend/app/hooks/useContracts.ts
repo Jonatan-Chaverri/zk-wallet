@@ -43,19 +43,9 @@ export function useContracts() {
     });
   }, [config]);
 
-  const fetchEncryptedBalance = async (token: Address) => {
-    if (!address) {
-      throw new Error('Wallet not connected');
-    }
-
-    // Use backend API to fetch encrypted balance
-    return apiClient.getEncryptedBalance(token, address);
-  };
-
   return {
     ...contracts,
     publicClient,
-    fetchEncryptedBalance,
     isConfigured: !!contracts.userWallet && !!config?.confidentialERC20,
   };
 }

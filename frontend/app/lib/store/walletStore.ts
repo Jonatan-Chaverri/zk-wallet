@@ -6,6 +6,7 @@ interface WalletStore extends WalletState {
   // Actions
   setAddress: (address: string | null) => void;
   setKeyPair: (keyPair: BabyJubKeyPair | null) => void;
+  setPublicKey: (publicKey: BabyJubKeyPair['publicKey'] | null) => void;
   addBalance: (balance: EncryptedBalance) => void;
   updateBalance: (token: string, ciphertext: EncryptedBalance['ciphertext']) => void;
   addTransaction: (tx: Transaction) => void;
@@ -29,6 +30,10 @@ export const useWalletStore = create<WalletStore>()(
         set({
           publicKey: keyPair?.publicKey || null,
           privateKey: keyPair?.privateKey || null,
+        }),
+      setPublicKey: (publicKey) =>
+        set({
+          publicKey: publicKey || null,
         }),
       addBalance: (balance) =>
         set((state) => ({

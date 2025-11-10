@@ -10,7 +10,8 @@ export interface User {
   id: string;
   name: string;
   address: string;
-  public_key: string;
+  public_key_x: string | null;
+  public_key_y: string | null;
   contract_id: string | null;
   created_at: string;
 }
@@ -37,7 +38,8 @@ export interface CreateContractInput {
 export interface CreateUserInput {
   name: string;
   address: string;
-  public_key: string;
+  public_key_x?: string | null;
+  public_key_y?: string | null;
   contract_id?: string | null;
 }
 

@@ -11,7 +11,8 @@ export class UserService {
       .insert({
         name: input.name,
         address: input.address,
-        public_key: input.public_key,
+        public_key_x: input.public_key_x ?? null,
+        public_key_y: input.public_key_y ?? null,
       })
       .select()
       .single();

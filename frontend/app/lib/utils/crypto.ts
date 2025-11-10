@@ -129,3 +129,49 @@ export function homomorphicSubtract(
     x2: ct1.x2,
   };
 }
+
+/**
+ * Generate key bytes from public key (x, y) hex strings
+ * Converts two 32-byte hex strings into a 64-byte Uint8Array
+ * This matches the backend's generateKeyBytes function
+ */
+export function generateKeyBytes(pk: { x: string; y: string }): Uint8Array {
+  // Remove '0x' prefix if present
+  let xHex = pk.x.replace('0x', '');
+  let yHex = pk.y.replace('0x', '');
+
+  // Pad to 64 characters (32 bytes) if needed
+  xHex = xHex.padStart(64, '0');
+  yHex = yHex.padStart(64, '0');
+
+  // Ensure hex strings are not longer than 64 characters (32 bytes)
+  if (xHex.length > 64) {
+    throw new Error(`Public key x hex string too long: ${xHex.length} characters (max 64)`);
+  }
+  if (yHex.length > 64) {
+    throw new Error(`Public key y hex string too long: ${yHex.length} characters (max 64)`);
+  }
+
+  // Convert hex strings to Uint8Array (32 bytes each)
+  const xBytes = new Uint8Array(
+    xHex.match(/.{1,2}/g)?.map(byte => parseInt(byte, 16)) || []
+  );
+  const yBytes = new Uint8Array(
+    yHex.match(/.{1,2}/g)?.map(byte => parseInt(byte, 16)) || []
+  );
+
+  // Ensure both are exactly 32 bytes
+  if (xBytes.length !== 32) {
+    throw new Error(`Public key x must be 32 bytes, got ${xBytes.length}`);
+  }
+  if (yBytes.length !== 32) {
+    throw new Error(`Public key y must be 32 bytes, got ${yBytes.length}`);
+  }
+
+  // Concatenate x and y into a 64-byte array
+  const pubBytes = new Uint8Array(64);
+  pubBytes.set(xBytes, 0);
+  pubBytes.set(yBytes, 32);
+
+  return pubBytes;
+}

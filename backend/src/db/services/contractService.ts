@@ -44,6 +44,30 @@ export class ContractService {
   }
 
   /**
+   * Get contract by name and network
+   */
+  static async getContractByNameAndNetwork(
+    name: string,
+    network: string
+  ): Promise<Contract | null> {
+    const { data, error } = await supabase
+      .from('contracts')
+      .select('*')
+      .eq('name', name)
+      .eq('network', network)
+      .single();
+
+    if (error) {
+      if (error.code === 'PGRST116') {
+        return null; // Not found
+      }
+      throw new Error(`Failed to get contract: ${error.message}`);
+    }
+
+    return data as Contract;
+  }
+
+  /**
    * Get contract by ID
    */
   static async getContractById(id: string): Promise<Contract | null> {

@@ -7,7 +7,6 @@ import type { Ciphertext } from '../lib/types';
 
 export function WalletCard() {
   const { address, publicKey } = useWallet();
-  const { fetchEncryptedBalance } = useContracts();
   const [balances, setBalances] = useState<Array<{ token: string; ciphertext: Ciphertext }>>([]);
   const [loading, setLoading] = useState(false);
 

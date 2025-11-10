@@ -18,6 +18,13 @@ export interface AppConfig {
 let configCache: AppConfig | null = null;
 
 /**
+ * Clear the config cache (useful for retries or when config might have changed)
+ */
+export function clearConfigCache() {
+  configCache = null;
+}
+
+/**
  * API client for backend interactions
  */
 class ApiClient {
@@ -53,15 +60,28 @@ class ApiClient {
       return configCache;
     }
 
-    const response = await this.request<ApiResponse<{ config: AppConfig }>>(
+    const response = await this.request<ApiResponse<{ 
+      config: {
+        rpc_url: string;
+        confidential_erc20: string;
+      }
+    }>>(
       '/api/config',
       {
         method: 'GET',
       }
     );
     
-    configCache = response.config;
-    return response.config;
+    // Map snake_case from backend to camelCase for frontend
+    const mappedConfig: AppConfig = {
+      chainId: '', // Not provided by backend currently
+      rpcUrl: response.config.rpc_url,
+      confidentialERC20: response.config.confidential_erc20,
+      defaultWalletAddress: '', // Not provided by backend currently
+    };
+    
+    configCache = mappedConfig;
+    return mappedConfig;
   }
 
   /**
@@ -73,6 +93,8 @@ class ApiClient {
       id: string;
       name: string;
       address: string;
+      public_key_x: string | null;
+      public_key_y: string | null;
       created_at: string;
     } | null;
   }> {
@@ -87,6 +109,8 @@ class ApiClient {
           id: string;
           name: string;
           address: string;
+          public_key_x: string | null;
+          public_key_y: string | null;
           created_at: string;
         };
       }>(
@@ -118,6 +142,10 @@ class ApiClient {
       username: string;
       created_at: string;
     };
+    publicKey: {
+      x: string;
+      y: string;
+    };
     secret: string;
   }> {
     const response = await this.request<{
@@ -127,6 +155,10 @@ class ApiClient {
         address: string;
         username: string;
         created_at: string;
+      };
+      publicKey: {
+        x: string;
+        y: string;
       };
       secret: string;
     }>(

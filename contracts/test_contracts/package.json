@@ -6,7 +6,8 @@
   "scripts": {
     "parse_abi": "node abis/parse_abi.js",
     "test_erc20": "npx hardhat run scripts/confidential_erc20.js --network sepolia",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "initialize": "npx hardhat run scripts/initialize.js --network sepolia"
   },
   "keywords": [],
   "author": "",

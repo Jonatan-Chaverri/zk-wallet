@@ -1,6 +1,7 @@
 import express from 'express';
 import { UserService } from '../db/services/userService';
 import { randomBytes } from 'crypto';
+import { generateNoirKeypair } from '../services/walletService';
 
 const router = express.Router();
 
@@ -55,19 +56,20 @@ router.post('/', async (req, res, next) => {
       });
     }
 
-    // Generate a random secret (32 bytes = 64 hex characters)
-    const secret = randomBytes(32).toString('hex');
+    // Generate user key pair using GrumpkinScalar and Schnorr
+    const { sk, pk } = await generateNoirKeypair();
+    console.log('Generated user key pair using GrumpkinScalar');
 
-    // Create user
-    // Note: public_key is required in the schema, so we'll use a placeholder
-    // that indicates it needs to be set. The public_key should be set via
-    // a separate endpoint after the user generates their key pair.
-    const placeholderPublicKey = `pending_${randomBytes(16).toString('hex')}`;
-    
+    // Extract x and y coordinates from public key bytes (64 bytes: 32 bytes x + 32 bytes y)
+    const public_key_x = pk.x;
+    const public_key_y = pk.y;
+
+    // Create user with generated public key coordinates
     const user = await UserService.createUser({
       name: username,
       address: address.toLowerCase(), // Normalize to lowercase
-      public_key: placeholderPublicKey, // Placeholder - should be updated via another endpoint
+      public_key_x,
+      public_key_y,
     });
 
     res.status(201).json({
@@ -78,7 +80,11 @@ router.post('/', async (req, res, next) => {
         username: user.name,
         created_at: user.created_at,
       },
-      secret, // Return the secret (client should store this securely)
+      publicKey: {
+        x: public_key_x,
+        y: public_key_y,
+      },
+      secret: sk.toString(), // Return the secret (client should store this securely)
     });
   } catch (error: any) {
     next(error);
