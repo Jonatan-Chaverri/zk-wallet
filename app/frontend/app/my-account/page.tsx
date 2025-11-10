@@ -9,7 +9,7 @@ import { apiClient } from '../lib/utils/api';
 import { savePrivateKey, getPrivateKey } from '../lib/utils/privateKeyStorage';
 import { Address } from 'viem';
 // @ts-ignore - baby-giant-wasm is provided by confidential-transfers
-import * as curveWasm from 'confidential-transfers/baby-giant/baby_giant_wasm';
+import * as curveWasm from 'confidential-transfers/baby-giant';
 
 export default function MyAccountPage() {
   const { address, isConnected, connectWallet, isConnecting } = useWallet();
