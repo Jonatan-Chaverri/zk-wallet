@@ -133,13 +133,8 @@ pragma solidity ^0.8.27;
 
 interface IVerifier {
     function verify(bytes calldata _proof, bytes32[] calldata _publicInputs) external returns (bool);
-}
 
 type Fr is uint256;
-
-using {add as +} for Fr global;
-using {sub as -} for Fr global;
-using {mul as *} for Fr global;
 
 using {exp as ^} for Fr global;
 using {notEqual as !=} for Fr global;
