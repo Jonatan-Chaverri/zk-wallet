@@ -13,6 +13,7 @@
     "@noir-lang/noir_js": "1.0.0-beta.14",
     "@tanstack/react-query": "^5.90.6",
     "@tanstack/react-query-devtools": "^5.90.2",
+    "circomlibjs": "^0.1.7",
     "confidential-transfers": "github:mistcash/mist-v1",
     "buffer": "^6.0.3",
     "date-fns": "^4.1.0",

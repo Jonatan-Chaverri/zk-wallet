@@ -3,32 +3,17 @@ import { Layout } from './components/Layout';
 export default function HomePage() {
   return (
     <Layout>
-      <div className="max-w-5xl mx-auto text-center py-16 px-4">
-        <h1 className="text-6xl font-extrabold mb-4 text-white tracking-tight">
-          zkWallet
-        </h1>
-        <p className="text-xl text-gray-200 mb-10 max-w-3xl mx-auto">
-          A <strong>privacy-preserving wallet</strong> prototype built on{' '}
-          <span className="text-brand-purple font-semibold">Arbitrum Stylus</span>.<br />
-          Manage encrypted balances and prove transactions without revealing your data.
+      <div className="max-w-4xl mx-auto text-center py-12">
+        <h1 className="text-5xl font-bold mb-6">zkWallet</h1>
+        <p className="text-xl text-gray-700 mb-4 max-w-2xl mx-auto">
+          A privacy-preserving wallet that allows you to manage encrypted balances
+          and generate zero-knowledge proofs locally on Arbitrum Stylus.
         </p>
 
-        <div className="bg-black/70 border border-white/20 rounded-2xl p-8 mb-12 max-w-3xl mx-auto backdrop-blur-sm">
-          <h2 className="text-2xl font-semibold mb-3 text-white">🔒 Confidentiality Model</h2>
-          <p className="text-gray-200 mb-4 text-sm">
-            zkWallet balances <span className="font-semibold text-white">transparency</span> and{' '}
-            <span className="font-semibold text-white">privacy</span> through a hybrid model:
-          </p>
-          <ul className="text-gray-100 text-left list-disc list-inside space-y-2">
-            <li>
-              <strong className="text-brand-purple">Public:</strong> sender and receiver addresses remain visible on-chain
-            </li>
-            <li>
-              <strong className="text-brand-purple">Private:</strong> transaction amounts are encrypted and invisible to third parties
-            </li>
-          </ul>
-          <p className="text-gray-400 mt-5 text-sm">
-            This approach preserves the integrity of public blockchains while protecting user confidentiality.
+        <div className="bg-yellow-50 border-2 border-yellow-400 rounded-xl p-4 mb-8 max-w-2xl mx-auto">
+          <p className="text-sm font-semibold text-yellow-900 mb-2">⚠️ Demo Version</p>
+          <p className="text-sm text-yellow-800">
+            This is a demo application. Currently, it only works on <strong>Arbitrum Sepolia</strong> with <strong>WETH tokens</strong>.
           </p>
         </div>
 
