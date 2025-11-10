@@ -13,6 +13,23 @@ const nextConfig: NextConfig = {
   experimental: {
     typedRoutes: false,
   },
+
+  // Webpack config to ignore optional dependencies
+  webpack: (config) => {
+    config.resolve.fallback = {
+      ...config.resolve.fallback,
+      '@react-native-async-storage/async-storage': false,
+      'pino-pretty': false,
+    };
+
+    // Ignore warnings about optional dependencies
+    config.ignoreWarnings = [
+      { module: /@react-native-async-storage\/async-storage/ },
+      { module: /pino-pretty/ },
+    ];
+
+    return config;
+  },
 };
 
 export default nextConfig;
