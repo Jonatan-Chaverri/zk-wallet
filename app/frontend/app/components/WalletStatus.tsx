@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, startTransition } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
@@ -15,7 +15,9 @@ export function WalletStatus() {
 
   // Prevent hydration mismatch by only rendering wallet-dependent content after mount
   useEffect(() => {
-    setIsMounted(true);
+    startTransition(() => {
+      setIsMounted(true);
+    });
   }, []);
 
   // Render a placeholder during SSR to prevent hydration mismatch

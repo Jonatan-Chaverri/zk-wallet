@@ -5,16 +5,16 @@ import { Buffer } from 'buffer/';
 
 // Make Buffer available globally in the browser
 if (typeof window !== 'undefined') {
-  // @ts-ignore
+  // @ts-expect-error - Buffer polyfill for browser
   window.Buffer = Buffer;
-  // @ts-ignore
+  // @ts-expect-error - Buffer polyfill for browser
   globalThis.Buffer = Buffer;
-  // @ts-ignore
+  // @ts-expect-error - Buffer polyfill for browser
   global.Buffer = Buffer;
 }
 
 // Ensure Buffer is available immediately
 if (typeof globalThis.Buffer === 'undefined') {
-  // @ts-ignore
+  // @ts-expect-error - Buffer polyfill for browser
   globalThis.Buffer = Buffer;
 }
