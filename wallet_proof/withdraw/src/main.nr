@@ -1,4 +1,4 @@
-use elgamal::{CipherText, encrypt, public_key, decrypt, verify_embedding};
+use elgamal::{add_ciphertexts, CipherText, encrypt, public_key, decrypt, verify_embedding};
 use std::embedded_curve_ops::EmbeddedCurvePoint;
 
 // ==================== CUSTOM TYPES ====================
@@ -10,6 +10,21 @@ struct Point {
 }
 
 // ==================== HELPER FUNCTIONS ====================
+
+// Negate an elliptic curve point by negating its y-coordinate
+fn negate_point(p: EmbeddedCurvePoint) -> EmbeddedCurvePoint {
+    EmbeddedCurvePoint {
+        x: p.x,
+        y: 0 - p.y,
+        is_infinite: p.is_infinite
+    }
+}
+
+// Homomorphic subtraction: a - b = a + (-b)
+fn subtract_ciphertexts(a: CipherText, b: CipherText) -> CipherText {
+    let negated_b = (negate_point(b.0), negate_point(b.1));
+    add_ciphertexts(a, negated_b)
+}
 
 fn verify_sender(
     sender_priv_key: Field,
@@ -51,21 +66,17 @@ fn verify_sufficient_balance(current_balance: Field, amount: Field) {
 fn main(
     // Private inputs (secrets not revealed in proof)
     sender_priv_key: Field,
-    current_balance: Field,        // Current plaintext balance
-    withdraw_amount: Field,         // Amount to withdraw
-    r_new_balance: Field,           // Randomness for new balance encryption
+    current_balance: Field,        // Current plaintext balance (witness for decryption & balance check)
+    r_amount: Field,                // Randomness for encrypting amount
 
     // Public inputs (visible in proof) - ORDER MATTERS for contract!
     sender_pubkey: pub Point,
     old_balance_x1: pub Point,
     old_balance_x2: pub Point,
     sender_address: pub Field,
-    token: pub Field
-) -> pub (
-    Point,  // new_balance_x1
-    Point,  // new_balance_x2
-    Field   // revealed_amount
-) {
+    token: pub Field,
+    amount: pub Field               // Amount to withdraw (plaintext, so contract can transfer)
+) -> pub (Point, Point) {  // Returns new_balance ciphertext (2 Points: x1 and x2)
     // Reconstruct EmbeddedCurvePoint and CipherText from Point structs
     let sender_pubkey_ec = EmbeddedCurvePoint {
         x: sender_pubkey.x,
@@ -79,27 +90,27 @@ fn main(
     );
 
     // Enforce range constraints
-    withdraw_amount.assert_max_bit_size::<40>();
+    amount.assert_max_bit_size::<40>();
 
     // Verify sender authentication and balance knowledge
+    // This proves the user knows their private key by decrypting old_balance
     verify_sender(sender_priv_key, sender_pubkey_ec, old_balance_ct, current_balance);
 
     // Verify sender has sufficient balance
-    verify_sufficient_balance(current_balance, withdraw_amount);
+    verify_sufficient_balance(current_balance, amount);
 
-    // Calculate new balance after withdrawal
-    let new_balance = current_balance - withdraw_amount;
-    new_balance.assert_max_bit_size::<40>();
+    // Encrypt the withdrawal amount under user's public key
+    let amount_ct = encrypt(sender_pubkey_ec, amount, r_amount);
 
-    // Encrypt new balance
-    let new_balance_ct = encrypt(sender_pubkey_ec, new_balance, r_new_balance);
+    // HOMOMORPHIC SUBTRACTION: new_balance = old_balance - amount
+    // This works entirely with encrypted values!
+    let new_balance_ct = subtract_ciphertexts(old_balance_ct, amount_ct);
 
-    // Return Point structs (serializes to individual Fields)
-    (
-        Point { x: new_balance_ct.0.x, y: new_balance_ct.0.y },
-        Point { x: new_balance_ct.1.x, y: new_balance_ct.1.y },
-        withdraw_amount
-    )
+    // Return the new encrypted balance as 2 Points (x1 and x2)
+    let new_balance_x1 = Point { x: new_balance_ct.0.x, y: new_balance_ct.0.y };
+    let new_balance_x2 = Point { x: new_balance_ct.1.x, y: new_balance_ct.1.y };
+
+    (new_balance_x1, new_balance_x2)
 }
 
 // ==================== TESTS ====================
@@ -111,40 +122,37 @@ fn test_withdraw_basic() {
     let sender_pubkey = public_key(sender_priv_key);
 
     let current_balance = 1000;
-    let withdraw_amount = 200;
+    let amount = 200;
     let expected_new_balance = 800;
 
     // Encrypt current balance
     let r_old = 111;
     let old_balance_ct = encrypt(sender_pubkey, current_balance, r_old);
 
-    // New randomness for new balance
-    let r_new = 222;
+    // Randomness for encrypting amount
+    let r_amount = 222;
 
-    // Call with Point structs
-    let (new_bal_x1, new_bal_x2, revealed_amount) = main(
+    // Call circuit - it will compute and return the new balance
+    let (returned_new_balance_x1, returned_new_balance_x2) = main(
         sender_priv_key,
         current_balance,
-        withdraw_amount,
-        r_new,
+        r_amount,
         Point { x: sender_pubkey.x, y: sender_pubkey.y },
         Point { x: old_balance_ct.0.x, y: old_balance_ct.0.y },
         Point { x: old_balance_ct.1.x, y: old_balance_ct.1.y },
         1, // sender address
-        3  // token address
+        3, // token address
+        amount
     );
 
-    // Verify: revealed amount should be the withdrawal
-    assert(revealed_amount == withdraw_amount);
-
-    // Reconstruct CipherText from returned Points
-    let new_balance_ct: CipherText = (
-        EmbeddedCurvePoint { x: new_bal_x1.x, y: new_bal_x1.y, is_infinite: false },
-        EmbeddedCurvePoint { x: new_bal_x2.x, y: new_bal_x2.y, is_infinite: false }
+    // Reconstruct returned balance as CipherText to verify
+    let returned_new_balance_ct: CipherText = (
+        EmbeddedCurvePoint { x: returned_new_balance_x1.x, y: returned_new_balance_x1.y, is_infinite: false },
+        EmbeddedCurvePoint { x: returned_new_balance_x2.x, y: returned_new_balance_x2.y, is_infinite: false }
     );
 
-    // Verify: new balance decrypts correctly
-    let decrypted_new_balance = decrypt(new_balance_ct, sender_priv_key);
+    // Verify: returned new balance decrypts correctly
+    let decrypted_new_balance = decrypt(returned_new_balance_ct, sender_priv_key);
     verify_embedding(decrypted_new_balance, expected_new_balance);
 }
 
@@ -155,35 +163,34 @@ fn test_withdraw_all_balance() {
     let sender_pubkey = public_key(sender_priv_key);
 
     let current_balance = 500;
-    let withdraw_amount = 500;
+    let amount = 500;
 
     let r_old = 111;
     let old_balance_ct = encrypt(sender_pubkey, current_balance, r_old);
 
-    let r_new = 222;
+    let r_amount = 222;
 
-    // Call with Point structs
-    let (new_bal_x1, new_bal_x2, revealed_amount) = main(
+    // Call circuit - it will compute and return the new balance
+    let (returned_new_balance_x1, returned_new_balance_x2) = main(
         sender_priv_key,
         current_balance,
-        withdraw_amount,
-        r_new,
+        r_amount,
         Point { x: sender_pubkey.x, y: sender_pubkey.y },
         Point { x: old_balance_ct.0.x, y: old_balance_ct.0.y },
         Point { x: old_balance_ct.1.x, y: old_balance_ct.1.y },
         1,
-        3
+        3,
+        amount
     );
 
-    assert(revealed_amount == withdraw_amount);
-
-    // Reconstruct CipherText from returned Points
-    let new_balance_ct: CipherText = (
-        EmbeddedCurvePoint { x: new_bal_x1.x, y: new_bal_x1.y, is_infinite: false },
-        EmbeddedCurvePoint { x: new_bal_x2.x, y: new_bal_x2.y, is_infinite: false }
+    // Reconstruct returned balance as CipherText to verify
+    let returned_new_balance_ct: CipherText = (
+        EmbeddedCurvePoint { x: returned_new_balance_x1.x, y: returned_new_balance_x1.y, is_infinite: false },
+        EmbeddedCurvePoint { x: returned_new_balance_x2.x, y: returned_new_balance_x2.y, is_infinite: false }
     );
 
-    let decrypted_new_balance = decrypt(new_balance_ct, sender_priv_key);
+    // Verify: returned new balance decrypts to 0 (withdrew everything)
+    let decrypted_new_balance = decrypt(returned_new_balance_ct, sender_priv_key);
     verify_embedding(decrypted_new_balance, 0);
 }
 
@@ -194,23 +201,23 @@ fn test_insufficient_balance_fails() {
     let sender_pubkey = public_key(sender_priv_key);
 
     let current_balance = 100;
-    let withdraw_amount = 1000; // More than balance!
+    let amount = 1000; // More than balance!
 
     let r_old = 111;
     let old_balance_ct = encrypt(sender_pubkey, current_balance, r_old);
 
-    let r_new = 222;
+    let r_amount = 222;
 
     // This should fail due to insufficient balance
-    let (_, _, _) = main(
+    let (_returned_new_balance_x1, _returned_new_balance_x2) = main(
         sender_priv_key,
         current_balance,
-        withdraw_amount,
-        r_new,
+        r_amount,
         Point { x: sender_pubkey.x, y: sender_pubkey.y },
         Point { x: old_balance_ct.0.x, y: old_balance_ct.0.y },
         Point { x: old_balance_ct.1.x, y: old_balance_ct.1.y },
         1,
-        3
+        3,
+        amount
     );
 }

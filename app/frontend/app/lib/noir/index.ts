@@ -1,57 +1,65 @@
-// Noir WASM integration for ZK proof generation
-// This module loads Noir circuits and provides proof generation functions
+// Noir proof generation integration
+// This bridges the application's interface with the actual Noir circuits
 
-/**
- * Load Noir WASM module
- * NOTE: This requires the Noir WASM package to be installed
- * For now, this is a placeholder structure
- */
-export async function loadNoirWasm() {
-  try {
-    // TODO: Import and initialize Noir WASM
-    // const noir = await import('@noir-lang/noir_wasm');
-    // return noir;
-    console.warn('Noir WASM not loaded - install @noir-lang/noir_wasm');
-    return null;
-  } catch (error) {
-    console.error('Failed to load Noir WASM:', error);
-    return null;
-  }
-}
+import {
+  generateDepositProof as generateDepositProofInternal,
+  generateWithdrawProof as generateWithdrawProofInternal,
+  generateTransferProof as generateTransferProofInternal,
+  generateRandomness,
+  type DepositParams,
+  type WithdrawParams,
+  type TransferParams,
+} from './proofGeneration';
+import { getTestAccount } from './testData';
 
 /**
  * Generate ZK proof for deposit
- * This should use Noir circuits to prove:
- * - old_balance + deposit_amount = new_balance (encrypted)
+ *
+ * For development: Uses test account data
+ * For production: Replace with real user's private key and encrypted balance
  */
 export async function generateDepositProof(params: {
-  oldBalance: string; // encrypted balance ciphertext
+  oldBalance: string; // Currently unused - using test data
   depositAmount: bigint;
-  newBalance: string; // encrypted balance ciphertext
-  publicKey: string;
-  chainId: bigint;
-  contractAddress: string;
-}): Promise<{ proof: string; publicInputs: string }> {
-  // TODO: Implement using Noir WASM
-  // This should:
-  // 1. Load the deposit circuit
-  // 2. Prepare witness from params
-  // 3. Generate proof
-  // 4. Return proof and public inputs
-  
-  console.warn('Deposit proof generation not implemented - requires Noir circuits');
-  return {
-    proof: '0x',
-    publicInputs: '0x',
+  newBalance: string; // Currently unused - circuit computes this
+  publicKey: string; // Currently unused - using test data
+  chainId: bigint; // Currently unused
+  contractAddress: string; // Used as sender address
+}): Promise<{ proof: Uint8Array; publicInputs: string[] }> {
+  console.log('[Proof] Starting deposit proof generation...');
+
+  // For development: Use test account
+  // TODO: Replace with real user data from wallet
+  const testAccount = getTestAccount('alice');
+
+  // Prepare circuit inputs
+  const circuitParams: DepositParams = {
+    // Private inputs (secrets)
+    senderPrivKey: testAccount.privateKey,
+    currentBalance: testAccount.balance,
+    randomness: generateRandomness(),
+
+    // Public inputs
+    senderPubkey: testAccount.publicKey,
+    oldBalanceX1: testAccount.encryptedBalance.x1,
+    oldBalanceX2: testAccount.encryptedBalance.x2,
+    senderAddress: params.contractAddress,
+    token: '0x0000000000000000000000000000000000000000', // TODO: Use actual token address
+    amount: params.depositAmount.toString(),
   };
+
+  // Generate proof using Noir circuit
+  const result = await generateDepositProofInternal(circuitParams);
+
+  console.log('[Proof] Deposit proof generated successfully!');
+  return result;
 }
 
 /**
  * Generate ZK proof for transfer
- * This should use Noir circuits to prove:
- * - from_old_balance - amount = from_new_balance
- * - to_old_balance + amount = to_new_balance
- * - All encrypted with correct public keys
+ *
+ * For development: Uses test account data
+ * For production: Replace with real user's private key and encrypted balances
  */
 export async function generateTransferProof(params: {
   fromOldBalance: string;
@@ -63,20 +71,46 @@ export async function generateTransferProof(params: {
   toPublicKey: string;
   chainId: bigint;
   contractAddress: string;
-}): Promise<{ proof: string; publicInputs: string }> {
-  // TODO: Implement using Noir WASM
-  console.warn('Transfer proof generation not implemented - requires Noir circuits');
-  return {
-    proof: '0x',
-    publicInputs: '0x',
+}): Promise<{ proof: Uint8Array; publicInputs: string[] }> {
+  console.log('[Proof] Starting transfer proof generation...');
+
+  // For development: Use test account as sender
+  const senderAccount = getTestAccount('alice');
+
+  // TODO: Get actual receiver data
+  // For now, using sender as receiver for testing
+  const receiverAccount = senderAccount;
+
+  const circuitParams: TransferParams = {
+    // Private inputs
+    senderPrivKey: senderAccount.privateKey,
+    senderCurrentBalance: senderAccount.balance,
+    transferAmount: params.amount.toString(),
+    randomnessSender: generateRandomness(),
+    randomnessReceiver: generateRandomness(),
+
+    // Public inputs
+    receiverAddress: params.contractAddress, // TODO: Use actual receiver address
+    receiverPubkey: receiverAccount.publicKey,
+    receiverOldBalanceX1: receiverAccount.encryptedBalance.x1,
+    receiverOldBalanceX2: receiverAccount.encryptedBalance.x2,
+    senderPubkey: senderAccount.publicKey,
+    senderOldBalanceX1: senderAccount.encryptedBalance.x1,
+    senderOldBalanceX2: senderAccount.encryptedBalance.x2,
+    token: '0x0000000000000000000000000000000000000000',
   };
+
+  const result = await generateTransferProofInternal(circuitParams);
+
+  console.log('[Proof] Transfer proof generated successfully!');
+  return result;
 }
 
 /**
  * Generate ZK proof for withdrawal
- * This should use Noir circuits to prove:
- * - old_balance - amount = new_balance
- * - No overspend
+ *
+ * For development: Uses test account data
+ * For production: Replace with real user's private key and encrypted balance
  */
 export async function generateWithdrawProof(params: {
   oldBalance: string;
@@ -85,11 +119,29 @@ export async function generateWithdrawProof(params: {
   publicKey: string;
   chainId: bigint;
   contractAddress: string;
-}): Promise<{ proof: string; publicInputs: string }> {
-  // TODO: Implement using Noir WASM
-  console.warn('Withdraw proof generation not implemented - requires Noir circuits');
-  return {
-    proof: '0x',
-    publicInputs: '0x',
+}): Promise<{ proof: Uint8Array; publicInputs: string[] }> {
+  console.log('[Proof] Starting withdraw proof generation...');
+
+  // For development: Use test account
+  const testAccount = getTestAccount('alice');
+
+  const circuitParams: WithdrawParams = {
+    // Private inputs
+    senderPrivKey: testAccount.privateKey,
+    currentBalance: testAccount.balance,
+    randomness: generateRandomness(),
+
+    // Public inputs
+    senderPubkey: testAccount.publicKey,
+    oldBalanceX1: testAccount.encryptedBalance.x1,
+    oldBalanceX2: testAccount.encryptedBalance.x2,
+    senderAddress: params.contractAddress,
+    token: '0x0000000000000000000000000000000000000000',
+    amount: params.amount.toString(),
   };
+
+  const result = await generateWithdrawProofInternal(circuitParams);
+
+  console.log('[Proof] Withdraw proof generated successfully!');
+  return result;
 }

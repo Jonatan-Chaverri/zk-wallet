@@ -2,7 +2,7 @@
 
 import { useWallet } from '../hooks/useWallet';
 import { useContracts } from '../hooks/useContracts';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, startTransition } from 'react';
 import type { Ciphertext } from '../lib/types';
 
 export function WalletCard() {
@@ -15,7 +15,9 @@ export function WalletCard() {
 
     // TODO: Fetch balances for all supported tokens
     // For now, this is a placeholder
-    setLoading(false);
+    startTransition(() => {
+      setLoading(false);
+    });
   }, [address]);
 
   if (!address) {

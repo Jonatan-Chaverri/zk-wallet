@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, startTransition } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { WalletStatus } from './WalletStatus';
@@ -16,7 +16,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
   // Set mounted state after hydration to prevent server/client mismatch
   useEffect(() => {
-    setIsMounted(true);
+    startTransition(() => {
+      setIsMounted(true);
+    });
   }, []);
 
   // Handle scroll-based background color transition
@@ -75,7 +77,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
   // Close mobile menu when route changes
   useEffect(() => {
-    setIsMobileMenuOpen(false);
+    startTransition(() => {
+      setIsMobileMenuOpen(false);
+    });
   }, [pathname]);
 
   const allNavItems = [

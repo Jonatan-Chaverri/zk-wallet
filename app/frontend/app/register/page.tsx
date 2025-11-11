@@ -129,7 +129,7 @@ export default function RegisterPage() {
             <div className="mb-4">
               <h2 className="text-xl font-bold mb-2 text-white">Registration Successful!</h2>
               <p className="text-sm text-gray-300">
-                Your account has been created. Please save your secret key securely. You won't be able to see it again.
+                Your account has been created. Please save your secret key securely. You won&apos;t be able to see it again.
               </p>
             </div>
 
@@ -246,7 +246,7 @@ export default function RegisterPage() {
             <h2 className="text-lg font-bold mb-2 text-white">👤 Username Requirements</h2>
             <p className="text-sm text-gray-300">
               Choose a unique username between <strong>5 and 13 characters</strong>. This username will be used by other users 
-              to send you money through the app. Make sure it's memorable and unique!
+              to send you money through the app. Make sure it&apos;s memorable and unique!
             </p>
           </div>
         </div>
