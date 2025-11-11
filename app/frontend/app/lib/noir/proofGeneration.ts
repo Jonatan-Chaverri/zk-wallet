@@ -17,7 +17,6 @@ export interface Point {
 export interface DepositParams {
   // Private inputs (secrets - never leave client)
   senderPrivKey: string;
-  currentBalance: string;
   randomness: string;
 
   // Public inputs (visible on-chain)
@@ -32,7 +31,6 @@ export interface DepositParams {
 export interface WithdrawParams {
   // Private inputs
   senderPrivKey: string;
-  currentBalance: string;
   randomness: string;
 
   // Public inputs
@@ -47,7 +45,6 @@ export interface WithdrawParams {
 export interface TransferParams {
   // Private inputs
   senderPrivKey: string;
-  senderCurrentBalance: string;
   transferAmount: string;
   randomnessSender: string;
   randomnessReceiver: string;
@@ -117,7 +114,6 @@ export async function generateDepositProof(params: DepositParams): Promise<Proof
   // Prepare inputs
   const inputs: InputMap = {
     sender_priv_key: params.senderPrivKey,
-    current_balance: params.currentBalance,
     r_amount: params.randomness,
     sender_pubkey: params.senderPubkey,
     old_balance_x1: params.oldBalanceX1,
@@ -162,7 +158,6 @@ export async function generateWithdrawProof(params: WithdrawParams): Promise<Pro
 
   const inputs: InputMap = {
     sender_priv_key: params.senderPrivKey,
-    current_balance: params.currentBalance,
     r_amount: params.randomness,
     sender_pubkey: params.senderPubkey,
     old_balance_x1: params.oldBalanceX1,
@@ -207,7 +202,6 @@ export async function generateTransferProof(params: TransferParams): Promise<Pro
 
   const inputs: InputMap = {
     sender_priv_key: params.senderPrivKey,
-    current_balance_sender: params.senderCurrentBalance,
     transfer_amount: params.transferAmount,
     r_amount_sender: params.randomnessSender,
     r_amount_receiver: params.randomnessReceiver,
