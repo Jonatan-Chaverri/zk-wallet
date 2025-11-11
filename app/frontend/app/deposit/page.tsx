@@ -7,8 +7,7 @@ import { useUser } from '../hooks/useUser';
 import { useConfidentialERC20 } from '../hooks/useConfidentialERC20';
 import { apiClient } from '../lib/utils/api';
 import { savePrivateKey, getPrivateKey } from '../lib/utils/privateKeyStorage';
-import { generateDepositWithdrawProof } from '../lib/utils/proverMock';
-import { generateKeyBytes } from '../lib/utils/crypto';
+import { generateDepositProof } from '../lib/noir/proofGeneration';
 import { Address, parseUnits } from 'viem';
 
 export default function DepositPage() {
@@ -94,6 +93,11 @@ export default function DepositPage() {
       return;
     }
 
+    if (!privateKeyInput.trim()) {
+      setDepositError('Please enter your private key');
+      return;
+    }
+
     setIsDepositing(true);
 
     try {
@@ -109,13 +113,13 @@ export default function DepositPage() {
 
       // Approve WETH spending first
       setDepositError(null);
-      try {
-        await approveWETH(wethToken.address as Address, amountWei);
-      } catch (approveErr: any) {
-        console.error('WETH approval error:', approveErr);
-        setDepositError(`Failed to approve WETH: ${approveErr.message || 'Unknown error'}`);
-        return;
-      }
+      // try {
+      //   await approveWETH(wethToken.address as Address, amountWei);
+      // } catch (approveErr: any) {
+      //   console.error('WETH approval error:', approveErr);
+      //   setDepositError(`Failed to approve WETH: ${approveErr.message || 'Unknown error'}`);
+      //   return;
+      // }
 
       // Get current encrypted balance
       const currentBalance = await balanceOfEnc(token as Address, address);
@@ -125,25 +129,82 @@ export default function DepositPage() {
         ? currentBalance 
         : new Uint8Array(currentBalance);
 
-      // Generate public key bytes (64 bytes: x||y)
-      const userPubKeyBytes = generateKeyBytes({
+      // Helper function to convert bytes to hex string
+      const bytesToHex = (bytes: Uint8Array): string => {
+        return Array.from(bytes)
+          .map(b => b.toString(16).padStart(2, '0'))
+          .join('');
+      };
+
+      // Helper function to extract 32 bytes as hex string
+      const extract32Bytes = (bytes: Uint8Array, offset: number): string => {
+        return bytesToHex(bytes.slice(offset, offset + 32));
+      };
+
+      // Parse balance into two points
+      // oldBalanceX1: x = [0..32], y = [32..64]
+      // oldBalanceX2: x = [64..96], y = [96..128]
+      const oldBalanceX1 = {
+        x: extract32Bytes(currentBalanceBytes, 0),
+        y: extract32Bytes(currentBalanceBytes, 32),
+      };
+      const oldBalanceX2 = {
+        x: extract32Bytes(currentBalanceBytes, 64),
+        y: extract32Bytes(currentBalanceBytes, 96),
+      };
+
+      // Generate random 10-character string for randomness
+      const generateRandomString = (length: number): string => {
+        const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+        let result = '';
+        for (let i = 0; i < length; i++) {
+          result += chars.charAt(Math.floor(Math.random() * chars.length));
+        }
+        return result;
+      };
+
+      const randomness = generateRandomString(10);
+
+      // Create sender public key as Point
+      const senderPubkey = {
         x: user.public_key_x,
         y: user.public_key_y,
+      };
+
+      // Generate proof and public inputs
+      const { proof, publicInputs } = await generateDepositProof({
+        senderPrivKey: privateKeyInput.trim(),
+        randomness,
+        senderPubkey,
+        oldBalanceX1,
+        oldBalanceX2,
+        senderAddress: address,
+        token: token as string,
+        amount: amountWei.toString(),
+      });
+      console.log('publicInputs:', publicInputs);
+      console.log('proof:', proof);
+      console.log('proof length:', proof.length);
+      console.log('publicInputs length:', publicInputs.length);
+
+      // Convert publicInputs from string[] to number[]
+      // publicInputs are field elements as strings (hex or decimal), convert to numbers
+      const publicInputsArray = publicInputs.map((input: string) => {
+        // Try to parse as hex first (if it starts with 0x or looks like hex)
+        if (input.startsWith('0x') || /^[0-9a-fA-F]+$/.test(input) && input.length > 10) {
+          const hexString = input.startsWith('0x') ? input.slice(2) : input;
+          const bigInt = BigInt('0x' + hexString);
+          return Number(bigInt);
+        } else {
+          // Parse as decimal string
+          return Number(input);
+        }
       });
 
-      // Generate proof and public inputs using mock prover
-      const { public_inputs, proof } = generateDepositWithdrawProof(
-        userPubKeyBytes,
-        address,
-        token,
-        amountWei,
-        currentBalanceBytes
-      );
-
       // Call deposit function
-      const txHash = await depositToContract(public_inputs, proof);
+      //const txHash = await depositToContract(publicInputsArray, proof);
       
-      setDepositSuccess(`Deposit successful! Transaction: ${txHash}`);
+      //setDepositSuccess(`Deposit successful! Transaction: ${txHash}`);
       setAmount(''); // Clear form on success
     } catch (err: any) {
       console.error('Deposit error:', err);
