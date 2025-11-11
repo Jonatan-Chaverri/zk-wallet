@@ -49,7 +49,7 @@ export function TxHistory() {
         {transactions.slice(0, 10).map((tx, idx) => (
           <div
             key={idx}
-            className="p-4 border border-gray-200 rounded-lg hover:border-black transition-colors"
+            className="p-4 border border-gray-200 rounded-lg hover:border-brand-purple transition-colors"
           >
             <div className="flex items-start justify-between mb-2">
               <div className="flex items-center gap-2">
@@ -94,7 +94,7 @@ export function TxHistory() {
               href={`https://sepolia.arbiscan.io/tx/${tx.hash}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-xs text-blue-600 hover:underline mt-2 inline-block"
+              className="text-xs text-blue-600 hover:text-brand-purple hover:underline mt-2 inline-block"
             >
               View on Explorer →
             </Link>

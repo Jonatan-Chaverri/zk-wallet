@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { Layout } from '../components/Layout';
 import { useWallet } from '../hooks/useWallet';
 import { useUser } from '../hooks/useUser';
@@ -12,8 +13,9 @@ import { Address } from 'viem';
 import * as curveWasm from 'confidential-transfers/baby-giant';
 
 export default function MyAccountPage() {
-  const { address, isConnected, connectWallet, isConnecting } = useWallet();
-  const { user: userFromHook, isLoading: isLoadingUser, refresh } = useUser(address);
+  const router = useRouter();
+  const { address, isConnected, connectWallet, isConnecting, disconnect } = useWallet();
+  const { user: userFromHook, isLoading: isLoadingUser, refresh, clearUser } = useUser(address);
   const { balanceOfEnc } = useConfidentialERC20();
   const [user, setUser] = useState<{
     id: string;
@@ -120,7 +122,7 @@ export default function MyAccountPage() {
     const [x, y] = balECPointEncoded.split('|');
     const bal = curveWasm.grumpkin_bsgs_str(x, y).toString();
     if ('0' == bal) {
-      return 'Private key is incorrect';
+      throw new Error('Wrong private key');
     }
     return bal.substring(0, bal.length - 2) + '.' + bal.substring(bal.length - 2);
   };
@@ -147,7 +149,6 @@ export default function MyAccountPage() {
 
     try {
       const result = await balanceOfEnc(selectedToken, address);
-      console.log('Balance of user encrypted:', result);
       
       // Parse the Uint8Array (128 bytes) into CipherText structure
       // bytes 0-31: c1.x
@@ -204,12 +205,12 @@ export default function MyAccountPage() {
     return (
       <Layout>
         <div className="max-w-2xl mx-auto">
-          <h1 className="text-3xl font-bold mb-6">My Account</h1>
-          <p className="text-gray-600 mb-4">Please connect your MetaMask wallet to view your account information.</p>
+          <h1 className="text-3xl font-bold mb-6 text-white">My Account</h1>
+          <p className="text-white mb-4">Please connect your MetaMask wallet to view your account information.</p>
           <button
             onClick={connectWallet}
             disabled={isConnecting}
-            className="px-6 py-3 bg-black text-white rounded-xl hover:bg-gray-900 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium"
+            className="px-6 py-3 bg-black text-white rounded-xl hover:bg-brand-purple disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium"
           >
             {isConnecting ? 'Connecting...' : 'Connect MetaMask'}
           </button>
@@ -222,9 +223,9 @@ export default function MyAccountPage() {
     return (
       <Layout>
         <div className="max-w-2xl mx-auto">
-          <h1 className="text-3xl font-bold mb-6">My Account</h1>
-          <div className="bg-white border border-black rounded-xl p-6 shadow-lg">
-            <p className="text-gray-600">Loading account information...</p>
+          <h1 className="text-3xl font-bold mb-6 text-white">My Account</h1>
+          <div className="bg-black border border-white rounded-xl p-6 shadow-lg">
+            <p className="text-white">Loading account information...</p>
           </div>
         </div>
       </Layout>
@@ -235,9 +236,9 @@ export default function MyAccountPage() {
     return (
       <Layout>
         <div className="max-w-2xl mx-auto">
-          <h1 className="text-3xl font-bold mb-6">My Account</h1>
-          <div className="bg-white border border-black rounded-xl p-6 shadow-lg">
-            <p className="text-red-600 mb-4">
+          <h1 className="text-3xl font-bold mb-6 text-white">My Account</h1>
+          <div className="bg-black border border-white rounded-xl p-6 shadow-lg">
+            <p className="text-red-400 mb-4">
               {error || 'User not found. Please make sure you are registered.'}
             </p>
             <button
@@ -263,7 +264,7 @@ export default function MyAccountPage() {
                   fetchUser();
                 }
               }}
-              className="px-4 py-2 border border-black rounded-lg hover:bg-gray-50 transition-colors"
+              className="px-4 py-2 border border-white rounded-lg hover:bg-brand-purple text-white transition-colors"
             >
               Retry
             </button>
@@ -276,68 +277,66 @@ export default function MyAccountPage() {
   return (
     <Layout>
       <div className="max-w-2xl mx-auto">
-        <h1 className="text-3xl font-bold mb-6">My Account</h1>
+        <h1 className="text-3xl font-bold mb-6 text-white">My Account</h1>
 
-        <div className="bg-white border border-black rounded-xl p-6 shadow-lg space-y-6">
+        <div className="bg-black border border-white rounded-xl p-6 shadow-lg space-y-6">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-sm font-medium text-white mb-2">
               Username
             </label>
-            <div className="px-4 py-3 bg-gray-50 border border-gray-300 rounded-lg font-mono text-sm">
+            <div className="px-4 py-3 bg-gray-900 border border-gray-700 rounded-lg font-mono text-sm text-white">
               {user.name}
             </div>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-sm font-medium text-white mb-2">
               Address
             </label>
-            <div className="px-4 py-3 bg-gray-50 border border-gray-300 rounded-lg font-mono text-sm break-all">
+            <div className="px-4 py-3 bg-gray-900 border border-gray-700 rounded-lg font-mono text-sm break-all text-white">
               {user.address}
             </div>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Public Key X
-            </label>
-            <div className="px-4 py-3 bg-gray-50 border border-gray-300 rounded-lg font-mono text-sm break-all">
-              {user.public_key_x || 'N/A'}
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Public Key Y
-            </label>
-            <div className="px-4 py-3 bg-gray-50 border border-gray-300 rounded-lg font-mono text-sm break-all">
-              {user.public_key_y || 'N/A'}
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-sm font-medium text-white mb-2">
               Registration Date
             </label>
-            <div className="px-4 py-3 bg-gray-50 border border-gray-300 rounded-lg text-sm">
+            <div className="px-4 py-3 bg-gray-900 border border-gray-700 rounded-lg text-sm text-white">
               {formatDate(user.created_at)}
             </div>
+          </div>
+
+          <div className="pt-4 border-t border-gray-700">
+            <button
+              onClick={async () => {
+                clearUser();
+                disconnect();
+                // Wait a bit to ensure disconnect state updates propagate
+                await new Promise(resolve => setTimeout(resolve, 200));
+                // Force a full page reload to ensure all state is cleared
+                window.location.href = '/';
+              }}
+              className="w-full px-6 py-3 bg-red-600 text-white rounded-xl hover:bg-red-700 transition-colors font-medium"
+            >
+              Disconnect Wallet
+            </button>
           </div>
         </div>
 
         {/* Balance Check Section */}
-        <div className="bg-white border border-black rounded-xl p-6 shadow-lg space-y-6 mt-6">
-          <h2 className="text-xl font-bold mb-4">Check Balance</h2>
+        <div className="bg-black border border-white rounded-xl p-6 shadow-lg space-y-6 mt-6">
+          <h2 className="text-xl font-bold mb-4 text-white">Check Balance</h2>
           
           <div>
-            <label htmlFor="token" className="block text-sm font-medium text-gray-700 mb-2">
+            <label htmlFor="token" className="block text-sm font-medium text-white mb-2">
               Token
             </label>
             <select
               id="token"
               value={selectedToken}
               onChange={(e) => setSelectedToken(e.target.value as Address)}
-              className="w-full px-4 py-2 border border-black rounded-lg focus:outline-none focus:ring-2 focus:ring-black font-mono text-sm bg-white"
+              className="w-full px-4 py-2 border border-white rounded-lg focus:outline-none focus:ring-2 focus:ring-white font-mono text-sm bg-black text-white"
             >
               <option value="">Select a token</option>
               {tokens.map((token) => (
@@ -349,7 +348,7 @@ export default function MyAccountPage() {
           </div>
 
           <div>
-            <label htmlFor="private_key" className="block text-sm font-medium text-gray-700 mb-2">
+            <label htmlFor="private_key" className="block text-sm font-medium text-white mb-2">
               Private Key
             </label>
             <div className="relative">
@@ -363,12 +362,12 @@ export default function MyAccountPage() {
                   setBalance(null);
                 }}
                 placeholder="Enter your private key to decrypt balance"
-                className="w-full px-4 py-2 pr-10 border border-black rounded-lg focus:outline-none focus:ring-2 focus:ring-black font-mono text-sm"
+                className="w-full px-4 py-2 pr-10 border border-white rounded-lg focus:outline-none focus:ring-2 focus:ring-white font-mono text-sm bg-black text-white placeholder-gray-400"
               />
               <button
                 type="button"
                 onClick={() => setShowPrivateKey(!showPrivateKey)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700 focus:outline-none"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-brand-purple focus:outline-none"
                 aria-label={showPrivateKey ? 'Hide private key' : 'Show private key'}
               >
                 {showPrivateKey ? (
@@ -383,33 +382,33 @@ export default function MyAccountPage() {
                 )}
               </button>
             </div>
-            <p className="text-xs text-gray-500 mt-1">
+            <p className="text-xs text-gray-400 mt-1">
               Your private key is used locally to decrypt your balance. It is never sent to the server.
             </p>
             {privateKeyInput && (
-              <p className="text-xs text-gray-500 mt-1">
+              <p className="text-xs text-gray-400 mt-1">
                 Private key is saved locally and will be remembered for this wallet.
               </p>
             )}
           </div>
 
           {balanceError && (
-            <div className="bg-red-50 border border-red-200 rounded-lg p-3">
-              <p className="text-sm text-red-600">{balanceError}</p>
+            <div className="bg-red-900 border border-red-700 rounded-lg p-3">
+              <p className="text-sm text-red-200">{balanceError}</p>
             </div>
           )}
 
           {balance !== null && (
-            <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-              <p className="text-sm font-medium text-green-800 mb-1">Decrypted Balance:</p>
-              <p className="text-2xl font-bold text-green-900">{balance}</p>
+            <div className="bg-green-900 border border-green-700 rounded-lg p-4">
+              <p className="text-sm font-medium text-green-200 mb-1">Decrypted Balance:</p>
+              <p className="text-2xl font-bold text-green-100">{balance}</p>
             </div>
           )}
 
           <button
             onClick={handleCheckBalance}
             disabled={isCheckingBalance || !privateKeyInput.trim() || !selectedToken}
-            className="w-full px-6 py-3 bg-black text-white rounded-xl hover:bg-gray-900 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium"
+            className="w-full px-6 py-3 bg-green-600 text-white rounded-xl hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium"
           >
             {isCheckingBalance ? 'Checking Balance...' : 'Check Balance'}
           </button>

@@ -19,7 +19,7 @@ export default function DashboardPage() {
           <button
             onClick={connectWallet}
             disabled={isConnecting}
-            className="px-6 py-3 bg-black text-white rounded-xl hover:bg-gray-900 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium"
+            className="px-6 py-3 bg-black text-white rounded-xl hover:bg-brand-purple disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium"
           >
             {isConnecting ? 'Connecting...' : 'Connect MetaMask'}
           </button>

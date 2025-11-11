@@ -162,7 +162,7 @@ export default function DepositPage() {
           <button
             onClick={connectWallet}
             disabled={isConnecting}
-            className="px-6 py-3 bg-black text-white rounded-xl hover:bg-gray-900 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium"
+            className="px-6 py-3 bg-brand-purple text-white rounded-xl hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium"
           >
             {isConnecting ? 'Connecting...' : 'Connect MetaMask'}
           </button>
@@ -176,9 +176,9 @@ export default function DepositPage() {
       <div className="max-w-2xl mx-auto">
         <h1 className="text-3xl font-bold mb-6">Deposit Tokens</h1>
 
-        <form onSubmit={handleSubmit} className="bg-white border border-black rounded-xl p-6 shadow-lg space-y-6">
+        <form onSubmit={handleSubmit} className="bg-black border border-white rounded-xl p-6 shadow-lg space-y-6">
           <div>
-            <label htmlFor="amount" className="block text-sm font-medium mb-2">
+            <label htmlFor="amount" className="block text-sm font-medium mb-2 text-white">
               Amount
             </label>
             <input
@@ -189,12 +189,12 @@ export default function DepositPage() {
               onChange={(e) => setAmount(e.target.value)}
               placeholder="0.0"
               required
-              className="w-full px-4 py-2 border border-black rounded-lg focus:outline-none focus:ring-2 focus:ring-black"
+              className="w-full px-4 py-2 border border-white rounded-lg focus:outline-none focus:ring-2 focus:ring-white bg-black text-white"
             />
           </div>
 
           <div>
-            <label htmlFor="token" className="block text-sm font-medium mb-2">
+            <label htmlFor="token" className="block text-sm font-medium mb-2 text-white">
               Token
             </label>
             <select
@@ -203,7 +203,7 @@ export default function DepositPage() {
               onChange={(e) => setToken(e.target.value)}
               required
               disabled={isLoadingTokens || tokens.length === 0}
-              className="w-full px-4 py-2 border border-black rounded-lg focus:outline-none focus:ring-2 focus:ring-black font-mono text-sm bg-white disabled:bg-gray-100 disabled:cursor-not-allowed"
+              className="w-full px-4 py-2 border border-white rounded-lg focus:outline-none focus:ring-2 focus:ring-white font-mono text-sm bg-black text-white disabled:bg-gray-800 disabled:cursor-not-allowed"
             >
               <option value="">
                 {isLoadingTokens ? 'Loading tokens...' : tokens.length === 0 ? 'No tokens available' : 'Select a token'}
@@ -217,7 +217,7 @@ export default function DepositPage() {
           </div>
 
           <div>
-            <label htmlFor="private_key" className="block text-sm font-medium mb-2">
+            <label htmlFor="private_key" className="block text-sm font-medium mb-2 text-white">
               Private Key
             </label>
             <div className="relative">
@@ -228,12 +228,12 @@ export default function DepositPage() {
                 onChange={(e) => setPrivateKeyInput(e.target.value)}
                 placeholder={privateKey ? 'Using wallet private key (or enter custom)' : 'Enter private key'}
                 required={!privateKey}
-                className="w-full px-4 py-2 pr-10 border border-black rounded-lg focus:outline-none focus:ring-2 focus:ring-black font-mono text-sm"
+                className="w-full px-4 py-2 pr-10 border border-white rounded-lg focus:outline-none focus:ring-2 focus:ring-white font-mono text-sm bg-black text-white"
               />
               <button
                 type="button"
                 onClick={() => setShowPrivateKey(!showPrivateKey)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700 focus:outline-none"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-brand-purple focus:outline-none"
                 aria-label={showPrivateKey ? 'Hide private key' : 'Show private key'}
               >
                 {showPrivateKey ? (
@@ -261,21 +261,21 @@ export default function DepositPage() {
           </div>
 
           {depositError && (
-            <div className="bg-red-50 border border-red-200 rounded-lg p-3">
-              <p className="text-sm text-red-600">{depositError}</p>
+            <div className="bg-red-900/30 border border-red-500 rounded-lg p-3">
+              <p className="text-sm text-red-300">{depositError}</p>
             </div>
           )}
 
           {depositSuccess && (
-            <div className="bg-green-50 border border-green-200 rounded-lg p-3">
-              <p className="text-sm text-green-800">{depositSuccess}</p>
+            <div className="bg-green-900/30 border border-green-500 rounded-lg p-3">
+              <p className="text-sm text-green-300">{depositSuccess}</p>
             </div>
           )}
 
           <button
             type="submit"
             disabled={isDepositing || !user?.public_key_x || !user?.public_key_y}
-            className="w-full px-6 py-3 bg-black text-white rounded-xl hover:bg-gray-900 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium"
+            className="w-full px-6 py-3 bg-brand-purple text-white rounded-xl hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium"
           >
             {isDepositing ? 'Depositing...' : 'Deposit'}
           </button>
