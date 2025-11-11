@@ -1,21 +1,61 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #000000;
+  --background: #000000;
+  --foreground: #ffffff;
+  --color-brand-purple: #5500FF;
+  --color-brand-purple-dark: #4C1D95;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-brand-purple: var(--color-brand-purple);
+  --color-brand-purple-dark: var(--color-brand-purple-dark);
   --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
   --font-mono: 'IBM Plex Mono', monospace;
 }
 
+html {
+  min-height: 100%;
+}
+
 body {
+  position: relative;
+  min-height: 100vh;
   background: var(--background);
   color: var(--foreground);
-  font-family: var(--font-sans);
+}
+
+body::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at top left, #5500FF 0%, transparent 30%) no-repeat,
+    radial-gradient(circle at bottom right, #5500FF 0%, transparent 30%) no-repeat;
+  background-size: 70% 70%;
+  background-position: top left, bottom right;
+  filter: blur(150px);
+  z-index: -1;
+}
+
+.bg-gradient-purple {
+  position: relative;
+}
+
+.bg-gradient-purple::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at top left, #5500FF 0%, transparent 30%) no-repeat,
+    radial-gradient(circle at bottom right, #5500FF 0%, transparent 30%) no-repeat;
+  background-size: 70% 70%;
+  background-position: top left, bottom right;
+  filter: blur(150px);
+  z-index: 0;
+  pointer-events: none;
 }
 
 @layer utilities {
