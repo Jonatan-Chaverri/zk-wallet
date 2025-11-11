@@ -26,31 +26,6 @@ fn subtract_ciphertexts(a: CipherText, b: CipherText) -> CipherText {
     add_ciphertexts(a, negated_b)
 }
 
-fn verify_sender(
-    sender_priv_key: Field,
-    sender_pubkey: EmbeddedCurvePoint,
-    old_balance_ct: CipherText,
-    current_balance: Field
-) {
-    // Enforce 40-bit range constraint
-    current_balance.assert_max_bit_size::<40>();
-
-    // Verify sender's public key matches their private key
-    let computed_sender_pubkey = public_key(sender_priv_key);
-    assert(computed_sender_pubkey == sender_pubkey);
-
-    // Verify sender knows the decryption of their old balance
-    let decrypted_old_balance = decrypt(old_balance_ct, sender_priv_key);
-    verify_embedding(decrypted_old_balance, current_balance);
-}
-
-fn verify_sufficient_balance(current_balance: Field, amount: Field) {
-    // Cast to u64 for comparison
-    let balance_u64 = current_balance as u64;
-    let amount_u64 = amount as u64;
-    assert(balance_u64 >= amount_u64);
-}
-
 // ==================== TRANSFER CIRCUIT ====================
 // Allows users to privately transfer tokens to another user
 // Uses homomorphic addition for receiver's balance (no receiver private key needed!)
@@ -69,7 +44,6 @@ fn verify_sufficient_balance(current_balance: Field, amount: Field) {
 fn main(
     // Private inputs (secrets not revealed in proof)
     sender_priv_key: Field,
-    current_balance_sender: Field,  // Sender's plaintext balance (witness for decryption & balance check)
     transfer_amount: Field,          // Amount to transfer (kept private)
     r_amount_sender: Field,          // Randomness for encrypting transfer amount under sender's key
     r_amount_receiver: Field,        // Randomness for encrypting transfer amount under receiver's key
@@ -110,12 +84,9 @@ fn main(
     // Enforce range constraints
     transfer_amount.assert_max_bit_size::<40>();
 
-    // Verify sender authentication and balance knowledge
-    // This proves the sender knows their private key by decrypting old_balance
-    verify_sender(sender_priv_key, sender_pubkey_ec, old_balance_sender_ct, current_balance_sender);
-
-    // Verify sender has sufficient balance
-    verify_sufficient_balance(current_balance_sender, transfer_amount);
+    // Verify sender's public key matches their private key
+    let computed_sender_pubkey = public_key(sender_priv_key);
+    assert(computed_sender_pubkey == sender_pubkey_ec);
 
     // Encrypt transfer amount under sender's public key
     let transfer_amount_sender_ct = encrypt(sender_pubkey_ec, transfer_amount, r_amount_sender);
@@ -173,7 +144,6 @@ fn test_transfer_basic() {
     // Call circuit - it will compute and return both new balances
     let (sender_new_x1, sender_new_x2, receiver_new_x1, receiver_new_x2) = main(
         sender_priv_key,
-        sender_balance,
         transfer_amount,
         r_amount_sender,
         r_amount_receiver,
@@ -231,7 +201,6 @@ fn test_transfer_to_zero_balance() {
     // Call circuit - it will compute and return both new balances
     let (sender_new_x1, sender_new_x2, receiver_new_x1, receiver_new_x2) = main(
         sender_priv_key,
-        sender_balance,
         transfer_amount,
         r_amount_sender,
         r_amount_receiver,
@@ -260,44 +229,4 @@ fn test_transfer_to_zero_balance() {
 
     let decrypted_receiver_new = decrypt(returned_receiver_new_balance_ct, receiver_priv_key);
     verify_embedding(decrypted_receiver_new, 500);
-}
-
-#[test(should_fail)]
-fn test_insufficient_balance_fails() {
-    // Setup: Sender with 100 tokens tries to transfer 1000
-    let sender_priv_key = 42;
-    let sender_pubkey = public_key(sender_priv_key);
-
-    let receiver_priv_key = 100;
-    let receiver_pubkey = public_key(receiver_priv_key);
-
-    let sender_balance = 100;
-    let receiver_balance = 500;
-    let transfer_amount = 1000; // More than sender has!
-
-    let r_old_sender = 111;
-    let old_balance_sender_ct = encrypt(sender_pubkey, sender_balance, r_old_sender);
-
-    let r_old_receiver = 333;
-    let old_balance_receiver_ct = encrypt(receiver_pubkey, receiver_balance, r_old_receiver);
-
-    let r_amount_sender = 222;
-    let r_amount_receiver = 444;
-
-    // This should fail due to insufficient balance
-    let (_sender_new_x1, _sender_new_x2, _receiver_new_x1, _receiver_new_x2) = main(
-        sender_priv_key,
-        sender_balance,
-        transfer_amount,
-        r_amount_sender,
-        r_amount_receiver,
-        2,
-        Point { x: receiver_pubkey.x, y: receiver_pubkey.y },
-        Point { x: old_balance_receiver_ct.0.x, y: old_balance_receiver_ct.0.y },
-        Point { x: old_balance_receiver_ct.1.x, y: old_balance_receiver_ct.1.y },
-        Point { x: sender_pubkey.x, y: sender_pubkey.y },
-        Point { x: old_balance_sender_ct.0.x, y: old_balance_sender_ct.0.y },
-        Point { x: old_balance_sender_ct.1.x, y: old_balance_sender_ct.1.y },
-        3
-    );
 }

@@ -36,7 +36,6 @@ export async function generateDepositProof(params: {
   const circuitParams: DepositParams = {
     // Private inputs (secrets)
     senderPrivKey: testAccount.privateKey,
-    currentBalance: testAccount.balance,
     randomness: generateRandomness(),
 
     // Public inputs
@@ -84,7 +83,6 @@ export async function generateTransferProof(params: {
   const circuitParams: TransferParams = {
     // Private inputs
     senderPrivKey: senderAccount.privateKey,
-    senderCurrentBalance: senderAccount.balance,
     transferAmount: params.amount.toString(),
     randomnessSender: generateRandomness(),
     randomnessReceiver: generateRandomness(),
@@ -128,7 +126,6 @@ export async function generateWithdrawProof(params: {
   const circuitParams: WithdrawParams = {
     // Private inputs
     senderPrivKey: testAccount.privateKey,
-    currentBalance: testAccount.balance,
     randomness: generateRandomness(),
 
     // Public inputs

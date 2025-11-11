@@ -9,26 +9,6 @@ struct Point {
     y: Field
 }
 
-// ==================== HELPER FUNCTIONS ====================
-
-fn verify_sender(
-    sender_priv_key: Field,
-    sender_pubkey: EmbeddedCurvePoint,
-    old_balance_ct: CipherText,
-    current_balance: Field
-) {
-    // Enforce 40-bit range constraint
-    current_balance.assert_max_bit_size::<40>();
-
-    // Verify sender's public key matches their private key
-    let computed_sender_pubkey = public_key(sender_priv_key);
-    assert(computed_sender_pubkey == sender_pubkey);
-
-    // Verify sender knows the decryption of their old balance
-    let decrypted_old_balance = decrypt(old_balance_ct, sender_priv_key);
-    verify_embedding(decrypted_old_balance, current_balance);
-}
-
 // ==================== DEPOSIT CIRCUIT ====================
 // Allows users to deposit tokens into their confidential balance
 //
@@ -44,7 +24,6 @@ fn verify_sender(
 fn main(
     // Private inputs (secrets not revealed in proof)
     sender_priv_key: Field,
-    current_balance: Field,        // Current plaintext balance (witness for decryption)
     r_amount: Field,                // Randomness for encrypting amount
 
     // Public inputs (visible in proof) - ORDER MATTERS for contract!
@@ -70,9 +49,9 @@ fn main(
     // Enforce range constraints
     amount.assert_max_bit_size::<40>();
 
-    // Verify sender authentication and balance knowledge
-    // This proves the user knows their private key by decrypting old_balance
-    verify_sender(sender_priv_key, sender_pubkey_ec, old_balance_ct, current_balance);
+    // Verify sender's public key matches their private key
+    let computed_sender_pubkey = public_key(sender_priv_key);
+    assert(computed_sender_pubkey == sender_pubkey_ec);
 
     // Encrypt the deposit amount under user's public key
     let amount_ct = encrypt(sender_pubkey_ec, amount, r_amount);
@@ -110,7 +89,6 @@ fn test_deposit_basic() {
     // Call circuit - it will compute and return the new balance
     let (returned_new_balance_x1, returned_new_balance_x2) = main(
         sender_priv_key,
-        current_balance,
         r_amount,
         Point { x: sender_pubkey.x, y: sender_pubkey.y },
         Point { x: old_balance_ct.0.x, y: old_balance_ct.0.y },
@@ -148,7 +126,6 @@ fn test_deposit_zero_balance() {
     // Call circuit - it will compute and return the new balance
     let (returned_new_balance_x1, returned_new_balance_x2) = main(
         sender_priv_key,
-        current_balance,
         r_amount,
         Point { x: sender_pubkey.x, y: sender_pubkey.y },
         Point { x: old_balance_ct.0.x, y: old_balance_ct.0.y },
