@@ -2,6 +2,7 @@
 
 import { useSendTransaction as useWagmiSendTransaction, useWaitForTransactionReceipt } from 'wagmi';
 import { encodeDepositPrivate, encodeTransferPrivate, encodeWithdrawPrivate } from '../lib/contracts/userWallet';
+import { ensureArbitrumSepolia } from '../lib/utils/network';
 import type { Address } from 'viem';
 import type { Ciphertext } from '../lib/types';
 
@@ -18,6 +19,9 @@ export function useSendTransaction() {
     newBalance: Ciphertext;
     to: Address;
   }) => {
+    // Ensure we're on Arbitrum Sepolia before any transaction
+    await ensureArbitrumSepolia();
+
     const calldata = encodeDepositPrivate(
       params.tokenAddress,
       params.amount,
@@ -40,6 +44,9 @@ export function useSendTransaction() {
     proofInputs: string;
     proof: string;
   }) => {
+    // Ensure we're on Arbitrum Sepolia before any transaction
+    await ensureArbitrumSepolia();
+
     const calldata = encodeTransferPrivate(
       params.tokenAddress,
       params.recipient,
@@ -63,6 +70,9 @@ export function useSendTransaction() {
     proofInputs: string;
     proof: string;
   }) => {
+    // Ensure we're on Arbitrum Sepolia before any transaction
+    await ensureArbitrumSepolia();
+
     const calldata = encodeWithdrawPrivate(
       params.tokenAddress,
       params.recipient,
