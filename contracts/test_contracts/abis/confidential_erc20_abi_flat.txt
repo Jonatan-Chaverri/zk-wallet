@@ -1,14 +1,15 @@
 [
   "function balanceOfEnc(address token, address user) view returns (uint8[128])",
   "function deposit(uint8[] proof_inputs, uint8[] proof)",
+  "function getDepositVerifier() view returns (address)",
   "function getOwner() view returns (address)",
+  "function getTransferVerifier() view returns (address)",
   "function getUserPk(address user) view returns (uint8[64])",
-  "function getVerifier() view returns (address)",
-  "function init(address verifier, uint256 chain_id)",
+  "function getWithdrawVerifier() view returns (address)",
+  "function init(address deposit_verifier, address withdraw_verifier, address transfer_verifier)",
   "function isSupportedToken(address token) view returns (bool)",
   "function registerUserPk(uint8[64] public_key)",
-  "function setSupportedToken(address token, bool allowed)",
-  "function setVerifier(address verifier)",
+  "function setVerifier(address deposit_verifier, address withdraw_verifier, address transfer_verifier)",
   "function transferConfidential(uint8[] proof_inputs, uint8[] proof)",
   "function withdraw(uint8[] proof_inputs, uint8[] proof)"
 ]

@@ -9,6 +9,7 @@ import { useProofs } from '../hooks/useProofs';
 import { apiClient } from '../lib/utils/api';
 import { savePrivateKey, getPrivateKey } from '../lib/utils/privateKeyStorage';
 import { generateRandomness } from '../lib/noir/proofGeneration';
+import { convertDepositPublicInputs } from '../lib/utils/publicInputs';
 import { Address, parseUnits } from 'viem';
 
 export default function DepositPage() {
@@ -114,16 +115,20 @@ export default function DepositPage() {
       }
 
       const amountWei = parseUnits(amount, 18);
+      if (amountWei.toString().length > 19) {
+        setDepositError('Amount is too large');
+        return;
+      }
 
       // Approve WETH spending first
       setDepositError(null);
-      // try {
-      //   await approveWETH(wethToken.address as Address, amountWei);
-      // } catch (approveErr: any) {
-      //   console.error('WETH approval error:', approveErr);
-      //   setDepositError(`Failed to approve WETH: ${approveErr.message || 'Unknown error'}`);
-      //   return;
-      // }
+      try {
+        await approveWETH(wethToken.address as Address, amountWei);
+      } catch (approveErr: any) {
+        console.error('WETH approval error:', approveErr);
+        setDepositError(`Failed to approve WETH: ${approveErr.message || 'Unknown error'}`);
+        return;
+      }
 
       // Get current encrypted balance
       const currentBalance = await balanceOfEnc(token as Address, address);
@@ -166,22 +171,12 @@ export default function DepositPage() {
         y: hexToDecimal(extract32Bytes(currentBalanceBytes, 96)),
       };
 
-      // Generate randomness as a numeric string (Noir Field expects integer)
-      const randomness = generateRandomness();
-
       // Create sender public key as Point
       // Convert hex strings to decimal strings for Noir Field elements
       const senderPubkey = {
         x: user.public_key_x,
         y: user.public_key_y,
       };
-
-      // Convert address and token to decimal strings for Noir Field elements
-      const senderAddressDecimal = hexToDecimal(address);
-      const tokenDecimal = hexToDecimal(token as string);
-
-      // Convert private key from hex to decimal string before sending to circuit
-      const senderPrivKeyDecimal = hexToDecimal(privateKeyInput.trim());
 
       // Generate proof and public inputs using the hook
       const params = {
@@ -194,29 +189,21 @@ export default function DepositPage() {
         token: token,
         amount: amountWei.toString(),
       };
+      console.log('params:', params);
       const { proof, publicInputs } = await generateDeposit(params);
-      const publicInputsString = publicInputs.join('');
-      console.log('publicInputsString:', publicInputsString);
-      console.log('publicInputsString length:', publicInputsString.length);
+      console.log('proof length:', proof.length);
+      console.log('publicInputs length:', publicInputs.length);
 
-      // Convert publicInputs from string[] to number[]
-      // publicInputs are field elements as strings (hex or decimal), convert to numbers
-      const publicInputsArray = publicInputs.map((input: string) => {
-        // Try to parse as hex first (if it starts with 0x or looks like hex)
-        if (input.startsWith('0x') || /^[0-9a-fA-F]+$/.test(input) && input.length > 10) {
-          const hexString = input.startsWith('0x') ? input.slice(2) : input;
-          const bigInt = BigInt('0x' + hexString);
-          return Number(bigInt);
-        } else {
-          // Parse as decimal string
-          return Number(input);
-        }
-      });
+      // Convert publicInputs from string[] to Uint8Array(416) matching contract layout
+      const publicInputsArray = convertDepositPublicInputs(publicInputs);
+
+      // Ensure proof is Uint8Array
+      const proofBytes = proof instanceof Uint8Array ? proof : new Uint8Array(proof);
 
       // Call deposit function
-      //const txHash = await depositToContract(publicInputsArray, proof);
+      const txHash = await depositToContract(publicInputsArray, proofBytes);
       
-      //setDepositSuccess(`Deposit successful! Transaction: ${txHash}`);
+      setDepositSuccess(`Deposit successful! Transaction: ${txHash}`);
       setAmount(''); // Clear form on success
     } catch (err: any) {
       console.error('Deposit error:', err);

@@ -190,8 +190,6 @@ export function useConfidentialERC20() {
 
     // Convert to arrays if needed
     const inputsArray = Array.isArray(proofInputs) ? proofInputs : Array.from(proofInputs);
-    console.log('inputsArray length:', inputsArray.length);
-    console.log('inputsArray:', inputsArray);
     const proofArray = Array.isArray(proof) ? proof : Array.from(proof);
 
     const tx = await contract.deposit(inputsArray, proofArray);

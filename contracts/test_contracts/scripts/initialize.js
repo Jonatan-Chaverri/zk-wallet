@@ -14,7 +14,11 @@ async function main() {
     const owner = await contract.getOwner();
     if (owner.toString() !== signer.address) {
       console.log("Initializing contract...");
-      const tx = await contract.init(process.env.VERIFIER_ADDRESS, process.env.CHAIN_ID);
+      const tx = await contract.init(
+        process.env.DEPOSIT_VERIFIER_ADDRESS,
+        process.env.WITHDRAW_VERIFIER_ADDRESS,
+        process.env.TRANSFER_VERIFIER_ADDRESS
+      );
       console.log("✅ Tx hash:", tx.hash);
     } else {
       console.log("Contract already initialized");

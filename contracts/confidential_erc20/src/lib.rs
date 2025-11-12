@@ -98,7 +98,6 @@ pub const G_GENERATOR_Y: [u8; 32] = [
     0x83, 0x3F, 0xC4, 0x8D, 0x82, 0x3F, 0x27, 0x2C
 ];
 
-
 // Main storage
 sol_storage! {
     #[entrypoint]
@@ -111,7 +110,9 @@ sol_storage! {
         mapping(address => bytes32) pk_y;
 
         // Noir verifier contract (must implement verify(bytes,bytes) -> bool)
-        address verifier;
+        address deposit_verifier;
+        address withdraw_verifier;
+        address transfer_verifier;
 
         // Encrypted balances: mapping(token => mapping(user => ciphertext))
         mapping(bytes32 => mapping(bytes32 => bytes32)) balances_x1;
@@ -128,9 +129,6 @@ sol_storage! {
 
         // Admin / owner
         address owner;
-
-        // Chain id (for domain separation in Noir proof)
-        uint256 chain_id;
     }
 
     pub struct ReentrancyGuard {
@@ -173,7 +171,7 @@ sol! {
         address indexed user_address
     );
 
-    event VerifierUpdated(address verifier);
+    event VerifierUpdated(address deposit_verifier, address withdraw_verifier, address transfer_verifier);
     event TokenAllowlistUpdated(address indexed token, bool allowed);
     event UserPkRegistered(address indexed user, bytes pk);
 
@@ -188,18 +186,23 @@ sol! {
 #[public]
 impl ConfidentialERC20 {
     /// One-time initialization
-    pub fn init(&mut self, verifier: Address, chain_id: U256) -> Result<(), Vec<u8>> {
+    pub fn init(
+        &mut self, 
+        deposit_verifier: Address, 
+        withdraw_verifier: Address, 
+        transfer_verifier: Address
+    ) -> Result<(), Vec<u8>> {
         if self.owner.get() != Address::ZERO {
             return Err("Already initialized".into());
         }
 
-        self.verifier.set(verifier);
+        self.deposit_verifier.set(deposit_verifier);
+        self.withdraw_verifier.set(withdraw_verifier);
+        self.transfer_verifier.set(transfer_verifier);
         self.owner.set(self.vm().msg_sender());
-        self.chain_id.set(chain_id);
 
         // For now we only support WETH token
-        let weth_token_address = Address::from_str(WETH_TOKEN_ADDRESS).unwrap();
-        self.supported_tokens.setter(weth_token_address).set(true);
+        self.supported_tokens.setter(Address::from_str(WETH_TOKEN_ADDRESS).unwrap()).set(true);
         Ok(())
     }
 
@@ -207,20 +210,14 @@ impl ConfidentialERC20 {
     // curve as the prover in this case Noir Grumpkin curve to generate this public key)
     pub fn register_user_pk(&mut self, public_key: [u8; 64]) -> Result<(), Vec<u8>> {
         let sender = self.vm().msg_sender();
-        let user_pk = self._get_user_pk(sender);
-        if user_pk != [0u8; 64] {
+        if self._get_user_pk(sender) != [0u8; 64] {
             return Err("User already registered".into());
         }
 
-        // Split the 64 bytes into two 32-byte slices
-        let pk_x_bytes = &public_key[..32];
-        let pk_y_bytes = &public_key[32..];
-
         // Safely convert to FixedBytes<32>
-        let pk_x = FixedBytes::<32>::try_from(pk_x_bytes).map_err(|_| b"Invalid pk_x length".to_vec())?;
-        let pk_y = FixedBytes::<32>::try_from(pk_y_bytes).map_err(|_| b"Invalid pk_y length".to_vec())?;
+        let pk_x = FixedBytes::<32>::try_from(&public_key[..32]).unwrap();
+        let pk_y = FixedBytes::<32>::try_from(&public_key[32..]).unwrap();
 
-        let sender = self.vm().msg_sender();
         self.pk_x.setter(sender).set(pk_x);
         self.pk_y.setter(sender).set(pk_y);
 
@@ -235,8 +232,9 @@ impl ConfidentialERC20 {
             x2: Point { x: *pk_x, y: *pk_y },
         };
 
-        let token = Address::from_str(WETH_TOKEN_ADDRESS).unwrap();
-        self._set_balance(token, sender, &initial_balance);
+        self._set_balance(
+            Address::from_str(WETH_TOKEN_ADDRESS).unwrap(), sender, &initial_balance
+        );
 
         Ok(())
     }
@@ -265,11 +263,11 @@ impl ConfidentialERC20 {
     /// user_pubkey: pub EmbeddedCurvePoint,
     /// current_balance_x1: pub EmbeddedCurvePoint,
     /// current_balance_x2: pub EmbeddedCurvePoint,
-    /// new_balance_x1: pub EmbeddedCurvePoint,
-    /// new_balance_x2: pub EmbeddedCurvePoint,
     /// user_address: pub Field,
     /// token: pub Field
     /// amount: pub Field,
+    /// new_balance_x1: pub EmbeddedCurvePoint,
+    /// new_balance_x2: pub EmbeddedCurvePoint,
     pub fn deposit(
         &mut self,
         proof_inputs: Vec<u8>,
@@ -300,14 +298,14 @@ impl ConfidentialERC20 {
     /// receiver_pubkey: pub EmbeddedCurvePoint,
     /// receiver_current_balance_x1: pub EmbeddedCurvePoint,
     /// receiver_current_balance_x2: pub EmbeddedCurvePoint,
-    /// receiver_new_balance_x1: pub EmbeddedCurvePoint,
-    /// receiver_new_balance_x2: pub EmbeddedCurvePoint,
     /// sender_pubkey: pub EmbeddedCurvePoint,
     /// sender_current_balance_x1: pub EmbeddedCurvePoint,
     /// sender_current_balance_x2: pub EmbeddedCurvePoint,
+    /// token: pub Field
     /// sender_new_balance_x1: pub EmbeddedCurvePoint,
     /// sender_new_balance_x2: pub EmbeddedCurvePoint,
-    /// token: pub Field
+    /// receiver_new_balance_x1: pub EmbeddedCurvePoint,
+    /// receiver_new_balance_x2: pub EmbeddedCurvePoint,
     pub fn transfer_confidential(
         &mut self,
         proof_inputs: Vec<u8>,
@@ -326,7 +324,7 @@ impl ConfidentialERC20 {
             return Err("User not registered".into());
         }
 
-        self._verify_proof(&proof_inputs_fixed, &proof)?;
+        self._verify_proof(&proof_inputs_fixed, &proof, self.transfer_verifier.get())?;
 
         let transfer_proof_inputs = self._decode_transfer_confidential_proof_inputs(proof_inputs_fixed);
 
@@ -335,7 +333,6 @@ impl ConfidentialERC20 {
             self._release_reentrancy();
             return Err(err);
         }
-
 
         let token = transfer_proof_inputs.token;
         let receiver_address = transfer_proof_inputs.receiver_address;
@@ -358,15 +355,34 @@ impl ConfidentialERC20 {
 
     // --- Admin ---
 
-    pub fn set_verifier(&mut self, verifier: Address) -> Result<(), Vec<u8>> {
+    pub fn set_verifier(
+        &mut self,
+        deposit_verifier: Address,
+        withdraw_verifier: Address,
+        transfer_verifier: Address
+    ) -> Result<(), Vec<u8>> {
         self._only_owner()?;
-        self.verifier.set(verifier);
-        evm::log(VerifierUpdated { verifier });
+        self.deposit_verifier.set(deposit_verifier);
+        self.withdraw_verifier.set(withdraw_verifier);
+        self.transfer_verifier.set(transfer_verifier);
+        evm::log(VerifierUpdated {
+            deposit_verifier,
+            withdraw_verifier,
+            transfer_verifier,
+        });
         Ok(())
     }
 
-    pub fn get_verifier(&self) -> Address {
-        self.verifier.get()
+    pub fn get_deposit_verifier(&self) -> Address {
+        self.deposit_verifier.get()
+    }
+
+    pub fn get_withdraw_verifier(&self) -> Address {
+        self.withdraw_verifier.get()
+    }
+
+    pub fn get_transfer_verifier(&self) -> Address {
+        self.transfer_verifier.get()
     }
 
     pub fn get_owner(&self) -> Address {
@@ -430,7 +446,7 @@ impl ConfidentialERC20 {
     /// Verify a Noir proof.
     ///
     /// We build public inputs as:
-    ///   [ token, from, to, chain_id, contract, method_id, proof_inputs... ]
+    ///   [ token, from, to, contract, method_id, proof_inputs... ]
     ///
     /// All cryptographic relations between ciphertexts & amounts live inside `proof_inputs`
     /// and are proved in Noir. We do NOT interpret them here.
@@ -438,14 +454,13 @@ impl ConfidentialERC20 {
         &self,
         proof_inputs: &[u8],
         proof: &[u8],
+        verifier_address: Address,
     ) -> Result<(), Vec<u8>> {
-        let verifier = self.verifier.get();
-
         let mut public_inputs_vec: Vec<FixedBytes<32>> = Vec::new();
 
         for chunk in proof_inputs.chunks(32) {
             let mut buf = [0u8; 32];
-            buf[..chunk.len()].copy_from_slice(chunk);
+            buf[..32].copy_from_slice(chunk);
             public_inputs_vec.push(FixedBytes::<32>::from(buf));
         }
     
@@ -455,7 +470,7 @@ impl ConfidentialERC20 {
             publicInputs: public_inputs_vec,
         }.abi_encode();
 
-        let res = unsafe { RawCall::new_static().call(verifier, &calldata)? };
+        let res = unsafe { RawCall::new_static().call(verifier_address, &calldata)? };
 
         if res.len() >= 32 && res[31] == 0 {
             return Err("Verifier returned false".into());
@@ -512,15 +527,18 @@ impl ConfidentialERC20 {
         }
     }
 
+    /// user_pubkey: pub EmbeddedCurvePoint,
+    /// current_balance_x1: pub EmbeddedCurvePoint,
+    /// current_balance_x2: pub EmbeddedCurvePoint,
+    /// user_address: pub Field,
+    /// token: pub Field
+    /// amount: pub Field,
+    /// new_balance_x1: pub EmbeddedCurvePoint,
+    /// new_balance_x2: pub EmbeddedCurvePoint,
     fn _decode_deposit_withdraw_proof_inputs(
         &self,
         proof_inputs: [u8; 416],
     ) -> Result<DepositWidthdrawProofInputs, Vec<u8>> {
-    
-        let amount_bytes: [u8; 32] = proof_inputs[384..416]
-            .try_into()
-            .map_err(|_| "bad amount slice".as_bytes().to_vec())?;
-        let amount = U256::from_be_bytes(amount_bytes);
     
         let user_pubkey: [u8; 64] = proof_inputs[..64]
             .try_into()
@@ -530,16 +548,22 @@ impl ConfidentialERC20 {
             .try_into()
             .map_err(|_| "bad current_balance slice".as_bytes().to_vec())?;
     
-        let new_slice: [u8; 128] = proof_inputs[192..320]
-            .try_into()
-            .map_err(|_| "bad new_balance slice".as_bytes().to_vec())?;
-    
         let current_balance = self._decode_ciphertext(current_slice);
-        let new_balance = self._decode_ciphertext(new_slice);
     
         // Addresses only takes 20 bytes, so we need to only take the last 20 bytes
-        let user_address = Address::from_slice(&proof_inputs[332..352]);
-        let token = Address::from_slice(&proof_inputs[364..384]);
+        let user_address = Address::from_slice(&proof_inputs[204..224]);
+        let token = Address::from_slice(&proof_inputs[236..256]);
+
+        let amount_bytes: [u8; 32] = proof_inputs[256..288]
+            .try_into()
+            .map_err(|_| "bad amount slice".as_bytes().to_vec())?;
+        let amount = U256::from_be_bytes(amount_bytes);
+
+        let new_slice: [u8; 128] = proof_inputs[288..416]
+            .try_into()
+            .map_err(|_| "bad new_balance slice".as_bytes().to_vec())?;
+
+        let new_balance = self._decode_ciphertext(new_slice);
     
         Ok(DepositWidthdrawProofInputs {
             user_pubkey,
@@ -557,12 +581,12 @@ impl ConfidentialERC20 {
             receiver_address: Address::from_slice(&proof_inputs[12..32]),
             receiver_pubkey: proof_inputs[32..96].try_into().unwrap(),
             receiver_current_balance: self._decode_ciphertext(proof_inputs[96..224].try_into().unwrap()),
-            receiver_new_balance: self._decode_ciphertext(proof_inputs[224..352].try_into().unwrap()),
-            sender_pubkey: proof_inputs[352..416].try_into().unwrap(),
-            sender_current_balance: self._decode_ciphertext(proof_inputs[416..544].try_into().unwrap()),
-            sender_new_balance: self._decode_ciphertext(proof_inputs[544..672].try_into().unwrap()),
+            sender_pubkey: proof_inputs[224..288].try_into().unwrap(),
+            sender_current_balance: self._decode_ciphertext(proof_inputs[288..416].try_into().unwrap()),
             // Addresses only takes 20 bytes, so we need to trim
-            token: Address::from_slice(&proof_inputs[684..704]),
+            token: Address::from_slice(&proof_inputs[428..448]),
+            sender_new_balance: self._decode_ciphertext(proof_inputs[448..576].try_into().unwrap()),
+            receiver_new_balance: self._decode_ciphertext(proof_inputs[576..704].try_into().unwrap()),
         }
     }
 
@@ -641,7 +665,11 @@ impl ConfidentialERC20 {
             return Err("User not registered".into());
         }
 
-        self._verify_proof(&proof_inputs, &proof)?;
+        if is_deposit {
+            self._verify_proof(&proof_inputs, &proof, self.deposit_verifier.get())?;
+        } else {
+            self._verify_proof(&proof_inputs, &proof, self.withdraw_verifier.get())?;
+        }
 
         let deposit_proof_inputs = self
             ._decode_deposit_withdraw_proof_inputs(proof_inputs)
