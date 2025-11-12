@@ -6,58 +6,60 @@ import { Noir, InputMap } from '@noir-lang/noir_js';
 import depositCircuit from './circuits/deposit.json';
 import withdrawCircuit from './circuits/withdraw.json';
 import transferCircuit from './circuits/transfer.json';
+import { generateBabyJubKeyPair } from '../utils/crypto';
+import type { BabyJubKeyPair } from '../types';
 
 // ========== TYPES ==========
 
 export interface Point {
-  x: string;
-  y: string;
+  x: string | number;
+  y: string | number;
 }
 
 export interface DepositParams {
   // Private inputs (secrets - never leave client)
-  senderPrivKey: string;
+  senderPrivKey: string | number;
   randomness: string;
 
   // Public inputs (visible on-chain)
   senderPubkey: Point;
   oldBalanceX1: Point;
   oldBalanceX2: Point;
-  senderAddress: string;
-  token: string;
+  senderAddress: string | number;
+  token: string | number;
   amount: string;
 }
 
 export interface WithdrawParams {
   // Private inputs
-  senderPrivKey: string;
+  senderPrivKey: string | number;
   randomness: string;
 
   // Public inputs
   senderPubkey: Point;
   oldBalanceX1: Point;
   oldBalanceX2: Point;
-  senderAddress: string;
-  token: string;
+  senderAddress: string | number;
+  token: string | number;
   amount: string;
 }
 
 export interface TransferParams {
   // Private inputs
-  senderPrivKey: string;
+  senderPrivKey: string | number;
   transferAmount: string;
   randomnessSender: string;
   randomnessReceiver: string;
 
   // Public inputs
-  receiverAddress: string;
+  receiverAddress: string | number;
   receiverPubkey: Point;
   receiverOldBalanceX1: Point;
   receiverOldBalanceX2: Point;
   senderPubkey: Point;
   senderOldBalanceX1: Point;
   senderOldBalanceX2: Point;
-  token: string;
+  token: string | number;
 }
 
 export interface ProofResult {
@@ -111,7 +113,14 @@ export async function generateDepositProof(params: DepositParams): Promise<Proof
   // Initialize Noir
   const noir = new Noir(depositCircuit as any);
 
-  // Prepare inputs
+  // Trim the user amount to 40 bits (remove 6 decimals so that it fits in 40 bits)
+  // The contract will later multiply the value by 10^6 to transfer
+  const amount = params.amount.slice(0, -6);
+  if (amount.length > 13) {
+    throw new Error('Amount is too large');
+  }
+
+  // Prepare inputs - Noir.js requires all inputs to be strings
   const inputs: InputMap = {
     sender_priv_key: params.senderPrivKey,
     r_amount: params.randomness,
@@ -120,7 +129,7 @@ export async function generateDepositProof(params: DepositParams): Promise<Proof
     old_balance_x2: params.oldBalanceX2,
     sender_address: params.senderAddress,
     token: params.token,
-    amount: params.amount
+    amount: amount
   };
 
   console.log('[ProofGen] Executing circuit...');
@@ -156,6 +165,7 @@ export async function generateWithdrawProof(params: WithdrawParams): Promise<Pro
 
   const noir = new Noir(withdrawCircuit as any);
 
+  // Prepare inputs - Noir.js requires all inputs to be strings
   const inputs: InputMap = {
     sender_priv_key: params.senderPrivKey,
     r_amount: params.randomness,
@@ -200,6 +210,7 @@ export async function generateTransferProof(params: TransferParams): Promise<Pro
 
   const noir = new Noir(transferCircuit as any);
 
+  // Prepare inputs - Noir.js requires all inputs to be strings
   const inputs: InputMap = {
     sender_priv_key: params.senderPrivKey,
     transfer_amount: params.transferAmount,
@@ -257,4 +268,14 @@ export function generateRandomness(): string {
   // Simple randomness for development
   // In production, use proper crypto.getRandomValues()
   return (Math.floor(Math.random() * 1000000000) + Date.now()).toString();
+}
+
+/**
+ * Generate a test key pair using the same logic as user registration
+ * This is useful for testing proof generation without requiring a registered user
+ * @param seed Optional seed for deterministic key generation
+ * @returns BabyJub key pair (private key and public key)
+ */
+export async function generateTestKeyPair(seed?: string): Promise<BabyJubKeyPair> {
+  return await generateBabyJubKeyPair(seed);
 }

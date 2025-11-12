@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { apiClient } from '../lib/utils/api';
 import { useWalletStore } from '../lib/store/walletStore';
 import { useConfidentialERC20 } from './useConfidentialERC20';
-import { generateKeyBytes } from '../lib/utils/crypto';
+import { generateKeyBytes, generateBabyJubKeyPair } from '../lib/utils/crypto';
 import type { Address } from 'viem';
 
 interface User {
@@ -135,9 +135,13 @@ export function useUser(address: Address | null) {
     setError(null);
 
     try {
+      // Generate keypair before registration
+      const keyPair = await generateBabyJubKeyPair();
+      
       const response = await apiClient.register({
         address,
         username,
+        publicKey: keyPair.publicKey,
       });
       
       const newUser = {
@@ -154,7 +158,7 @@ export function useUser(address: Address | null) {
       
       // Store public key in wallet store
       setKeyPair({
-        privateKey: response.secret,
+        privateKey: keyPair.privateKey,
         publicKey: {
           x: response.publicKey.x,
           y: response.publicKey.y,
@@ -188,8 +192,8 @@ export function useUser(address: Address | null) {
         console.warn('⚠️ Contract not configured, skipping public key registration');
       }
       
-      // Return the secret (client should store this securely)
-      return response.secret;
+      // Return the private key (client should store this securely)
+      return keyPair.privateKey;
     } catch (err: any) {
       const errorMessage = err.message || 'Failed to register user';
       setError(errorMessage);

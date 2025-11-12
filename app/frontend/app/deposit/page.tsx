@@ -5,15 +5,17 @@ import { Layout } from '../components/Layout';
 import { useWallet } from '../hooks/useWallet';
 import { useUser } from '../hooks/useUser';
 import { useConfidentialERC20 } from '../hooks/useConfidentialERC20';
+import { useProofs } from '../hooks/useProofs';
 import { apiClient } from '../lib/utils/api';
 import { savePrivateKey, getPrivateKey } from '../lib/utils/privateKeyStorage';
-import { generateDepositProof } from '../lib/noir/proofGeneration';
+import { generateRandomness } from '../lib/noir/proofGeneration';
 import { Address, parseUnits } from 'viem';
 
 export default function DepositPage() {
   const { address, isConnected, connectWallet, isConnecting, privateKey } = useWallet();
   const { user } = useUser(address);
   const { balanceOfEnc, deposit: depositToContract, approveWETH } = useConfidentialERC20();
+  const { generateDeposit, isGenerating: isGeneratingProof, error: proofError } = useProofs();
 
   const [amount, setAmount] = useState('');
   const [token, setToken] = useState('');
@@ -24,6 +26,9 @@ export default function DepositPage() {
   const [isDepositing, setIsDepositing] = useState(false);
   const [depositError, setDepositError] = useState<string | null>(null);
   const [depositSuccess, setDepositSuccess] = useState<string | null>(null);
+  
+  // Combine proof generation state with deposit state
+  const isLoading = isDepositing || isGeneratingProof;
 
   // Load private key from localStorage when address is available
   // Clear it when address is not available (disconnected)
@@ -108,7 +113,6 @@ export default function DepositPage() {
         return;
       }
 
-      // Convert amount to wei (assuming 18 decimals for ERC20 tokens)
       const amountWei = parseUnits(amount, 18);
 
       // Approve WETH spending first
@@ -141,51 +145,59 @@ export default function DepositPage() {
         return bytesToHex(bytes.slice(offset, offset + 32));
       };
 
+      // Helper function to convert hex string to decimal string (for Noir Field elements)
+      const hexToDecimal = (hex: string): string => {
+        // Remove '0x' prefix if present
+        const cleanHex = hex.startsWith('0x') ? hex.slice(2) : hex;
+        // Convert to BigInt and then to decimal string
+        return BigInt('0x' + cleanHex).toString();
+      };
+
       // Parse balance into two points
       // oldBalanceX1: x = [0..32], y = [32..64]
       // oldBalanceX2: x = [64..96], y = [96..128]
+      // Convert hex strings to decimal strings for Noir Field elements
       const oldBalanceX1 = {
-        x: extract32Bytes(currentBalanceBytes, 0),
-        y: extract32Bytes(currentBalanceBytes, 32),
+        x: hexToDecimal(extract32Bytes(currentBalanceBytes, 0)),
+        y: hexToDecimal(extract32Bytes(currentBalanceBytes, 32)),
       };
       const oldBalanceX2 = {
-        x: extract32Bytes(currentBalanceBytes, 64),
-        y: extract32Bytes(currentBalanceBytes, 96),
+        x: hexToDecimal(extract32Bytes(currentBalanceBytes, 64)),
+        y: hexToDecimal(extract32Bytes(currentBalanceBytes, 96)),
       };
 
-      // Generate random 10-character string for randomness
-      const generateRandomString = (length: number): string => {
-        const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-        let result = '';
-        for (let i = 0; i < length; i++) {
-          result += chars.charAt(Math.floor(Math.random() * chars.length));
-        }
-        return result;
-      };
-
-      const randomness = generateRandomString(10);
+      // Generate randomness as a numeric string (Noir Field expects integer)
+      const randomness = generateRandomness();
 
       // Create sender public key as Point
+      // Convert hex strings to decimal strings for Noir Field elements
       const senderPubkey = {
         x: user.public_key_x,
         y: user.public_key_y,
       };
 
-      // Generate proof and public inputs
-      const { proof, publicInputs } = await generateDepositProof({
+      // Convert address and token to decimal strings for Noir Field elements
+      const senderAddressDecimal = hexToDecimal(address);
+      const tokenDecimal = hexToDecimal(token as string);
+
+      // Convert private key from hex to decimal string before sending to circuit
+      const senderPrivKeyDecimal = hexToDecimal(privateKeyInput.trim());
+
+      // Generate proof and public inputs using the hook
+      const params = {
         senderPrivKey: privateKeyInput.trim(),
-        randomness,
+        randomness: generateRandomness(),
         senderPubkey,
         oldBalanceX1,
         oldBalanceX2,
         senderAddress: address,
-        token: token as string,
+        token: token,
         amount: amountWei.toString(),
-      });
-      console.log('publicInputs:', publicInputs);
-      console.log('proof:', proof);
-      console.log('proof length:', proof.length);
-      console.log('publicInputs length:', publicInputs.length);
+      };
+      const { proof, publicInputs } = await generateDeposit(params);
+      const publicInputsString = publicInputs.join('');
+      console.log('publicInputsString:', publicInputsString);
+      console.log('publicInputsString length:', publicInputsString.length);
 
       // Convert publicInputs from string[] to number[]
       // publicInputs are field elements as strings (hex or decimal), convert to numbers
@@ -208,7 +220,8 @@ export default function DepositPage() {
       setAmount(''); // Clear form on success
     } catch (err: any) {
       console.error('Deposit error:', err);
-      setDepositError(err.message || 'Failed to deposit tokens');
+      const errorMessage = proofError || err.message || 'Failed to deposit tokens';
+      setDepositError(errorMessage);
     } finally {
       setIsDepositing(false);
     }
@@ -335,10 +348,10 @@ export default function DepositPage() {
 
           <button
             type="submit"
-            disabled={isDepositing || !user?.public_key_x || !user?.public_key_y}
+            disabled={isLoading || !user?.public_key_x || !user?.public_key_y}
             className="w-full px-6 py-3 bg-brand-purple text-white rounded-xl hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium"
           >
-            {isDepositing ? 'Depositing...' : 'Deposit'}
+            {isGeneratingProof ? 'Generating proof...' : isDepositing ? 'Depositing...' : 'Deposit'}
           </button>
         </form>
       </div>

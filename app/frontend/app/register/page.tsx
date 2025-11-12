@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useLayoutEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Layout } from '../components/Layout';
 import { useWallet } from '../hooks/useWallet';
@@ -16,17 +16,27 @@ export default function RegisterPage() {
   const [secret, setSecret] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
+  const justRegisteredRef = useRef(false);
 
   useEffect(() => {
     setIsMounted(true);
   }, []);
 
-  // Redirect if already registered
-  useEffect(() => {
-    if (isMounted && isRegistered && user) {
-      router.push('/my-account');
+  // Redirect if already registered (but not if we just registered and need to show the secret)
+  // Use useLayoutEffect to check before paint, preventing flash of content
+  useLayoutEffect(() => {
+    // Only redirect if:
+    // 1. Component is mounted
+    // 2. User is registered
+    // 3. User data exists
+    // 4. No secret is being shown (user didn't just register)
+    // 5. Not currently registering
+    // 6. Didn't just complete registration
+    // 7. User has acknowledged storing the secret (secret is cleared)
+    if (isMounted && isRegistered && user && !secret && !isRegistering && !justRegisteredRef.current) {
+      router.push('/');
     }
-  }, [isMounted, isRegistered, user, router]);
+  }, [isMounted, isRegistered, user, secret, isRegistering, router]);
 
   const handleCopySecret = async () => {
     if (!secret) return;
@@ -69,12 +79,23 @@ export default function RegisterPage() {
 
     setIsRegistering(true);
     setRegisterError(null);
+    justRegisteredRef.current = false;
 
     try {
       const userSecret = await register(trimmedUsername);
+      console.log('Registration successful, private key received:', userSecret ? 'Yes' : 'No');
+      if (!userSecret) {
+        throw new Error('Private key was not returned from registration');
+      }
+      justRegisteredRef.current = true;
       setSecret(userSecret);
+      console.log('Secret state set to:', userSecret.substring(0, 10) + '...');
+      // Use requestAnimationFrame to ensure state is updated before any redirect checks
+      await new Promise(resolve => requestAnimationFrame(resolve));
     } catch (err: any) {
+      console.error('Registration error:', err);
       setRegisterError(err.message || 'Failed to register');
+      justRegisteredRef.current = false;
     } finally {
       setIsRegistering(false);
     }
@@ -163,11 +184,14 @@ export default function RegisterPage() {
 
             <button
               onClick={() => {
-                router.push('/my-account');
+                // Clear the secret and redirect to home
+                setSecret(null);
+                justRegisteredRef.current = false;
+                router.push('/');
               }}
               className="w-full px-4 py-2 bg-white text-black rounded-lg hover:bg-brand-purple hover:text-white transition-colors font-medium"
             >
-              Go to My Account
+              I&apos;ve stored my secret
             </button>
           </div>
         </div>

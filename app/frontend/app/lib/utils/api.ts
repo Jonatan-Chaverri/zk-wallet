@@ -155,6 +155,10 @@ class ApiClient {
   async register(params: {
     address: string;
     username: string;
+    publicKey: {
+      x: string;
+      y: string;
+    };
   }): Promise<{
     success: boolean;
     user: {
@@ -167,7 +171,6 @@ class ApiClient {
       x: string;
       y: string;
     };
-    secret: string;
   }> {
     const response = await this.request<{
       success: boolean;
@@ -181,7 +184,6 @@ class ApiClient {
         x: string;
         y: string;
       };
-      secret: string;
     }>(
       '/api/register',
       {
@@ -189,6 +191,7 @@ class ApiClient {
         body: JSON.stringify({
           address: params.address,
           username: params.username,
+          publicKey: params.publicKey,
         }),
       }
     );

@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  reactStrictMode: true,       // enable recommended defaults
+  reactStrictMode: false,       // enable recommended defaults
   typescript: {
     ignoreBuildErrors: true,
   },
@@ -16,26 +16,13 @@ const nextConfig: NextConfig = {
   typedRoutes: false,
 
   // WebAssembly support for confidential-transfers and Noir
-  webpack: (config, { isServer }) => {
-    // Enable WebAssembly experiments
+  webpack: (config) => {
     config.experiments = {
-      ...config.experiments,
       asyncWebAssembly: true,
+      syncWebAssembly: true,
+      layers: true,
     };
-
-    // Configure .wasm file handling
-    config.module.rules.push({
-      test: /\.wasm$/,
-      type: 'webassembly/async',
-    });
-
-    // Resolve 'wbg' module to the shim (used by wasm-bindgen generated code)
-    config.resolve.alias = {
-      ...config.resolve.alias,
-      wbg: require.resolve('./wbg-shim.js'),
-    };
-
-    return config;
+    return config
   },
 };
 
