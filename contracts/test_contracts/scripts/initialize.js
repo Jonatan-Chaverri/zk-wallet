@@ -21,7 +21,12 @@ async function main() {
       );
       console.log("✅ Tx hash:", tx.hash);
     } else {
-      console.log("Contract already initialized");
+      console.log("Contract already initialized, updating verifiers..");
+      await contract.setVerifier(
+        process.env.DEPOSIT_VERIFIER_ADDRESS,
+        process.env.WITHDRAW_VERIFIER_ADDRESS,
+        process.env.TRANSFER_VERIFIER_ADDRESS
+      );
     }
 }
 

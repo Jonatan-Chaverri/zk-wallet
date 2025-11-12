@@ -215,10 +215,16 @@ export async function generateTransferProof(params: TransferParams): Promise<Pro
 
   const noir = new Noir(transferCircuit as any);
 
+  // Assuming this value is always in decimal wei format
+  const amount = params.transferAmount.slice(0, -6);
+  if (amount.length > 13) {
+    throw new Error('Amount is too large');
+  }
+
   // Prepare inputs - Noir.js requires all inputs to be strings
   const inputs: InputMap = {
     sender_priv_key: params.senderPrivKey,
-    transfer_amount: params.transferAmount,
+    transfer_amount: amount,
     r_amount_sender: params.randomnessSender,
     r_amount_receiver: params.randomnessReceiver,
     receiver_address: params.receiverAddress,

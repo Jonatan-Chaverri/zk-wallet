@@ -24,7 +24,7 @@ export function useUser(address: Address | null) {
   const [error, setError] = useState<string | null>(null);
   const [isRegistered, setIsRegistered] = useState(false);
   const { setKeyPair, setPublicKey, privateKey } = useWalletStore();
-  const { registerUserPk, isConfigured: isContractConfigured } = useConfidentialERC20();
+  const { registerUserPk, getUserPk, isConfigured: isContractConfigured } = useConfidentialERC20();
 
   // Load username from localStorage on mount (only on client after hydration)
   useEffect(() => {
@@ -183,7 +183,44 @@ export function useUser(address: Address | null) {
           // Register the public key in the contract
           const txHash = await registerUserPk(publicKeyBytes);
           console.log('✅ Public key registered in contract. Tx hash:', txHash);
+          
+          // Wait a bit for the transaction to be processed and state to update
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          
+          // Verify registration by calling getUserPk on the contract
+          const registeredPk = await getUserPk(address);
+          
+          // Check if the registered public key is all zeros (registration failed)
+          const isAllZeros = registeredPk.every(byte => byte === 0);
+          
+          if (isAllZeros) {
+            console.error('❌ Registration verification failed: getUserPk returned all zeros');
+            // Delete the user from backend since registration failed
+            try {
+              await apiClient.deleteUser(address);
+              console.log('✅ Deleted user from backend due to failed registration');
+            } catch (deleteError: any) {
+              console.error('⚠️ Failed to delete user from backend:', deleteError);
+            }
+            
+            // Clear local state
+            setUser(null);
+            setIsRegistered(false);
+            if (typeof window !== 'undefined') {
+              localStorage.removeItem(USERNAME_STORAGE_KEY);
+              window.dispatchEvent(new Event('username-storage-changed'));
+            }
+            
+            throw new Error('Registration failed: Public key was not properly registered on the contract. Please try again.');
+          }
+          
+          console.log('✅ Registration verified: Public key successfully registered on contract');
         } catch (contractError: any) {
+          // If it's our custom error about failed registration, rethrow it
+          if (contractError.message?.includes('Registration failed')) {
+            throw contractError;
+          }
+          
           // Log error but don't fail the registration - user is still registered in backend
           console.error('⚠️ Failed to register public key in contract:', contractError);
           // Optionally, you could set a warning state here

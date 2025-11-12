@@ -250,6 +250,38 @@ class ApiClient {
     );
     return response.txHash;
   }
+
+  /**
+   * Delete a user by address
+   */
+  async deleteUser(address: string): Promise<{
+    success: boolean;
+    message: string;
+    deletedUser: {
+      id: string;
+      address: string;
+      username: string;
+    };
+  }> {
+    const response = await this.request<{
+      success: boolean;
+      message: string;
+      deletedUser: {
+        id: string;
+        address: string;
+        username: string;
+      };
+    }>(
+      '/api/deleteUser',
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          address,
+        }),
+      }
+    );
+    return response;
+  }
 }
 
 export const apiClient = new ApiClient(API_BASE_URL);

@@ -3,11 +3,21 @@
 import { useState, useEffect } from 'react';
 import { Layout } from '../components/Layout';
 import { useWallet } from '../hooks/useWallet';
+import { useUser } from '../hooks/useUser';
+import { useConfidentialERC20 } from '../hooks/useConfidentialERC20';
+import { useProofs } from '../hooks/useProofs';
 import { apiClient } from '../lib/utils/api';
 import { savePrivateKey, getPrivateKey } from '../lib/utils/privateKeyStorage';
+import { generateRandomness } from '../lib/noir/proofGeneration';
+import { convertTransferPublicInputs, parseUserBalance } from '../lib/utils/publicInputs';
+import { parseUnits } from 'viem';
+import type { Address } from 'viem';
 
 export default function TransferPage() {
   const { address, isConnected, connectWallet, isConnecting, privateKey } = useWallet();
+  const { user } = useUser(address);
+  const { balanceOfEnc, transferConfidential, getUserPk } = useConfidentialERC20();
+  const { generateTransfer, isGenerating: isGeneratingProof, error: proofError } = useProofs();
 
   const [amount, setAmount] = useState('');
   const [token, setToken] = useState('');
@@ -16,6 +26,12 @@ export default function TransferPage() {
   const [showPrivateKey, setShowPrivateKey] = useState(false);
   const [tokens, setTokens] = useState<Array<{ name: string; network: string; address: string }>>([]);
   const [isLoadingTokens, setIsLoadingTokens] = useState(false);
+  const [isTransferring, setIsTransferring] = useState(false);
+  const [transferError, setTransferError] = useState<string | null>(null);
+  const [transferSuccess, setTransferSuccess] = useState<string | null>(null);
+  
+  // Combine proof generation state with transfer state
+  const isLoading = isTransferring || isGeneratingProof;
 
   // Load private key from localStorage when address is available
   // Clear it when address is not available (disconnected)
@@ -60,15 +76,140 @@ export default function TransferPage() {
     }
   }, [address, privateKeyInput]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // No backend calls for now - just log the values
-    console.log('Transfer:', { 
-      amount, 
-      token, 
-      receiver, 
-      private_key: privateKeyInput || privateKey 
-    });
+    setTransferError(null);
+    setTransferSuccess(null);
+
+    if (!address) {
+      setTransferError('Wallet not connected');
+      return;
+    }
+
+    if (!user?.public_key_x || !user.public_key_y) {
+      setTransferError('User public key not found. Please register first.');
+      return;
+    }
+
+    if (!token) {
+      setTransferError('Please select a token');
+      return;
+    }
+
+    if (!amount || parseFloat(amount) <= 0) {
+      setTransferError('Please enter a valid amount');
+      return;
+    }
+
+    if (!receiver || receiver.length < 5 || receiver.length > 42) {
+      setTransferError('Receiver must be between 5 and 42 characters (address or username)');
+      return;
+    }
+
+    if (!privateKeyInput.trim()) {
+      setTransferError('Please enter your private key');
+      return;
+    }
+
+    setIsTransferring(true);
+
+    try {
+      // Determine if receiver is an address or username
+      const isAddress = receiver.length > 15 && receiver.startsWith('0x');
+      
+      // Fetch receiver data from /getUser API
+      const getUserParams = isAddress 
+        ? { address: receiver }
+        : { username: receiver };
+      
+      const receiverResponse = await apiClient.getUser(getUserParams);
+      
+      if (!receiverResponse.success || !receiverResponse.user) {
+        setTransferError('Receiver not found. Please check the address or username.');
+        return;
+      }
+
+      const receiverUser = receiverResponse.user;
+      const receiverAddress = receiverUser.address as Address;
+
+      if (!receiverUser.public_key_x || !receiverUser.public_key_y) {
+        setTransferError('Receiver has not registered their public key.');
+        return;
+      }
+
+      let receiverPk = await getUserPk(receiverAddress);
+      if (receiverPk.every(byte => byte === 0)) {
+        setTransferError('Receiver has not registered their public key on chain.');
+        return;
+      }
+
+      // Get balances for both sender and receiver
+      const senderBalance = await balanceOfEnc(token as Address, address);
+      const receiverBalance = await balanceOfEnc(token as Address, receiverAddress);
+
+      // Parse balances
+      const { oldBalanceX1: senderOldBalanceX1, oldBalanceX2: senderOldBalanceX2 } = parseUserBalance(senderBalance);
+      const { oldBalanceX1: receiverOldBalanceX1, oldBalanceX2: receiverOldBalanceX2 } = parseUserBalance(receiverBalance);
+
+      // Convert amount to wei
+      const amountWei = parseUnits(amount, 18);
+      if (amountWei.toString().length > 19) {
+        setTransferError('Amount is too large');
+        return;
+      }
+
+      // Create sender public key
+      const senderPubkey = {
+        x: user.public_key_x,
+        y: user.public_key_y,
+      };
+
+      // Create receiver public key
+      const receiverPubkey = {
+        x: receiverUser.public_key_x,
+        y: receiverUser.public_key_y,
+      };
+
+      // Generate proof and public inputs using the hook
+      const params = {
+        senderPrivKey: privateKeyInput.trim(),
+        transferAmount: amountWei.toString(),
+        randomnessSender: generateRandomness(),
+        randomnessReceiver: generateRandomness(),
+        receiverAddress: receiverAddress,
+        receiverPubkey,
+        receiverOldBalanceX1,
+        receiverOldBalanceX2,
+        senderPubkey,
+        senderOldBalanceX1,
+        senderOldBalanceX2,
+        token: token,
+      };
+      
+      console.log('Transfer params:', params);
+      const { proof, publicInputs } = await generateTransfer(params);
+      console.log('Transfer proof length:', proof.length);
+      console.log('Transfer publicInputs length:', publicInputs.length);
+
+      // Convert publicInputs from string[] to Uint8Array(704) matching contract layout
+      const publicInputsArray = convertTransferPublicInputs(publicInputs);
+
+      // Ensure proof is Uint8Array
+      const proofBytes = proof instanceof Uint8Array ? proof : new Uint8Array(proof);
+
+      // Call transferConfidential function
+      const txHash = await transferConfidential(publicInputsArray, proofBytes);
+      
+      setTransferSuccess(`Transfer successful! Transaction: ${txHash}`);
+      setAmount(''); // Clear form on success
+      setReceiver(''); // Clear receiver on success
+    } catch (err: any) {
+      console.error('Transfer error:', err);
+      const errorMessage = proofError || err.message || 'Failed to transfer tokens';
+      setTransferError(errorMessage);
+    } finally {
+      setIsTransferring(false);
+    }
   };
 
   if (!isConnected) {
@@ -148,10 +289,12 @@ export default function TransferPage() {
               onChange={(e) => setReceiver(e.target.value)}
               placeholder="0x... or username"
               required
+              minLength={5}
+              maxLength={42}
               className="w-full px-4 py-2 border border-white rounded-lg focus:outline-none focus:ring-2 focus:ring-white bg-black text-white"
             />
             <p className="text-xs text-gray-500 mt-1">
-              Enter either a wallet address (0x...) or a username
+              Enter either a wallet address (0x..., 5-42 chars) or a username (5-42 chars)
             </p>
           </div>
 
@@ -199,11 +342,24 @@ export default function TransferPage() {
             )}
           </div>
 
+          {transferError && (
+            <div className="bg-red-900/30 border border-red-500 rounded-lg p-3">
+              <p className="text-sm text-red-300">{transferError}</p>
+            </div>
+          )}
+
+          {transferSuccess && (
+            <div className="bg-green-900/30 border border-green-500 rounded-lg p-3">
+              <p className="text-sm text-green-300">{transferSuccess}</p>
+            </div>
+          )}
+
           <button
             type="submit"
-            className="w-full px-6 py-3 bg-brand-purple text-white rounded-xl hover:opacity-90 transition-colors font-medium"
+            disabled={isLoading || !user?.public_key_x || !user?.public_key_y}
+            className="w-full px-6 py-3 bg-brand-purple text-white rounded-xl hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium"
           >
-            Transfer
+            {isGeneratingProof ? 'Generating proof...' : isTransferring ? 'Transferring...' : 'Transfer'}
           </button>
         </form>
       </div>
