@@ -137,7 +137,9 @@ export async function generateDepositProof(params: DepositParams): Promise<Proof
 
   console.log('[ProofGen] Generating proof...');
   const backend = getBackend('deposit');
-  const proof = await backend.generateProof(witness);
+  const proof = await backend.generateProof(witness, {
+    keccak: true
+  });
 
   console.log(`[ProofGen] Deposit proof generated! Size: ${proof.proof.length} bytes`);
 
@@ -187,7 +189,9 @@ export async function generateWithdrawProof(params: WithdrawParams): Promise<Pro
 
   console.log('[ProofGen] Generating proof...');
   const backend = getBackend('withdraw');
-  const proof = await backend.generateProof(witness);
+  const proof = await backend.generateProof(witness, {
+    keccak: true
+  });
 
   console.log(`[ProofGen] Withdraw proof generated! Size: ${proof.proof.length} bytes`);
 
@@ -242,7 +246,9 @@ export async function generateTransferProof(params: TransferParams): Promise<Pro
 
   console.log('[ProofGen] Generating proof...');
   const backend = getBackend('transfer');
-  const proof = await backend.generateProof(witness);
+  const proof = await backend.generateProof(witness, {
+    keccak: true
+  });
 
   console.log(`[ProofGen] Transfer proof generated! Size: ${proof.proof.length} bytes`);
 
