@@ -2,6 +2,8 @@
  * Utilities for converting Noir public inputs to contract-compatible byte arrays
  */
 
+import { hexToDecimal, extract32Bytes } from "./crypto";
+
 /**
  * Convert a hex string (field element) to a 32-byte array (big-endian)
  * All inputs from Noir are in hexadecimal format
@@ -115,3 +117,26 @@ export function convertDepositPublicInputs(publicInputs: string[]): Uint8Array {
   return publicInputsArray;
 }
 
+export function parseUserBalance(currentBalance: Uint8Array) {
+  const currentBalanceBytes = currentBalance instanceof Uint8Array 
+    ? currentBalance 
+    : new Uint8Array(currentBalance);
+
+  // Parse balance into two points
+  // oldBalanceX1: x = [0..32], y = [32..64]
+  // oldBalanceX2: x = [64..96], y = [96..128]
+  // Convert hex strings to decimal strings for Noir Field elements
+  const oldBalanceX1 = {
+    x: hexToDecimal(extract32Bytes(currentBalanceBytes, 0)),
+    y: hexToDecimal(extract32Bytes(currentBalanceBytes, 32)),
+  };
+  const oldBalanceX2 = {
+    x: hexToDecimal(extract32Bytes(currentBalanceBytes, 64)),
+    y: hexToDecimal(extract32Bytes(currentBalanceBytes, 96)),
+  };
+
+  return {
+    oldBalanceX1,
+    oldBalanceX2,
+  };
+}
