@@ -5,16 +5,19 @@ import { Layout } from '../components/Layout';
 import { useWallet } from '../hooks/useWallet';
 import { useUser } from '../hooks/useUser';
 import { useConfidentialERC20 } from '../hooks/useConfidentialERC20';
+import { useProofs } from '../hooks/useProofs';
 import { apiClient } from '../lib/utils/api';
 import { savePrivateKey, getPrivateKey } from '../lib/utils/privateKeyStorage';
-import { generateDepositWithdrawProof } from '../lib/utils/proverMock';
-import { generateKeyBytes } from '../lib/utils/crypto';
+import { generateRandomness } from '../lib/noir/proofGeneration';
+import { convertDepositPublicInputs, parseUserBalance } from '../lib/utils/publicInputs';
 import { Address, parseUnits } from 'viem';
+import { hexToDecimal, extract32Bytes } from '../lib/utils/crypto';
 
 export default function WithdrawPage() {
   const { address, isConnected, connectWallet, isConnecting, privateKey } = useWallet();
   const { user } = useUser(address);
   const { balanceOfEnc, withdraw: withdrawFromContract } = useConfidentialERC20();
+  const { generateWithdraw, isGenerating: isGeneratingProof, error: proofError } = useProofs();
 
   const [amount, setAmount] = useState('');
   const [token, setToken] = useState('');
@@ -25,6 +28,9 @@ export default function WithdrawPage() {
   const [isWithdrawing, setIsWithdrawing] = useState(false);
   const [withdrawError, setWithdrawError] = useState<string | null>(null);
   const [withdrawSuccess, setWithdrawSuccess] = useState<string | null>(null);
+  
+  // Combine proof generation state with withdraw state
+  const isLoading = isWithdrawing || isGeneratingProof;
 
   // Load private key from localStorage when address is available
   // Clear it when address is not available (disconnected)
@@ -94,43 +100,65 @@ export default function WithdrawPage() {
       return;
     }
 
+    if (!privateKeyInput.trim()) {
+      setWithdrawError('Please enter your private key');
+      return;
+    }
+
     setIsWithdrawing(true);
 
     try {
       // Convert amount to wei (assuming 18 decimals for ERC20 tokens)
       const amountWei = parseUnits(amount, 18);
+      if (amountWei.toString().length > 19) {
+        setWithdrawError('Amount is too large');
+        return;
+      }
 
       // Get current encrypted balance
       const currentBalance = await balanceOfEnc(token as Address, address);
       
       // Convert current balance from Uint8Array to the format expected by prover
-      const currentBalanceBytes = currentBalance instanceof Uint8Array 
-        ? currentBalance 
-        : new Uint8Array(currentBalance);
+      const { oldBalanceX1, oldBalanceX2 } = parseUserBalance(currentBalance);
 
-      // Generate public key bytes (64 bytes: x||y)
-      const userPubKeyBytes = generateKeyBytes({
+      // Create sender public key as Point
+      // Convert hex strings to decimal strings for Noir Field elements
+      const senderPubkey = {
         x: user.public_key_x,
         y: user.public_key_y,
-      });
+      };
 
-      // Generate proof and public inputs using mock prover
-      const { public_inputs, proof } = generateDepositWithdrawProof(
-        userPubKeyBytes,
-        address,
-        token,
-        amountWei,
-        currentBalanceBytes
-      );
+      // Generate proof and public inputs using the hook
+      const params = {
+        senderPrivKey: privateKeyInput.trim(),
+        randomness: generateRandomness(),
+        senderPubkey,
+        oldBalanceX1,
+        oldBalanceX2,
+        senderAddress: address,
+        token: token,
+        amount: amountWei.toString(),
+      };
+      console.log('params:', params);
+      const { proof, publicInputs } = await generateWithdraw(params);
+      console.log('proof length:', proof.length);
+      console.log('publicInputs length:', publicInputs.length);
+
+      // Convert publicInputs from string[] to Uint8Array(416) matching contract layout
+      const publicInputsArray = convertDepositPublicInputs(publicInputs);
+
+      // Ensure proof is Uint8Array
+      const proofBytes = proof instanceof Uint8Array ? proof : new Uint8Array(proof);
 
       // Call withdraw function
-      const txHash = await withdrawFromContract(public_inputs, proof);
+      const txHash = await withdrawFromContract(publicInputsArray, proofBytes);
       
       setWithdrawSuccess(`Withdraw successful! Transaction: ${txHash}`);
       setAmount(''); // Clear form on success
     } catch (err: any) {
       console.error('Withdraw error:', err);
-      setWithdrawError(err.message || 'Failed to withdraw tokens');
+      const errorMessage = proofError || err.message || 'Failed to withdraw tokens';
+      setWithdrawError(errorMessage);
     } finally {
       setIsWithdrawing(false);
     }
@@ -257,10 +285,10 @@ export default function WithdrawPage() {
 
           <button
             type="submit"
-            disabled={isWithdrawing || !user?.public_key_x || !user?.public_key_y}
+            disabled={isLoading || !user?.public_key_x || !user?.public_key_y}
             className="w-full px-6 py-3 bg-brand-purple text-white rounded-xl hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium"
           >
-            {isWithdrawing ? 'Withdrawing...' : 'Withdraw'}
+            {isGeneratingProof ? 'Generating proof...' : isWithdrawing ? 'Withdrawing...' : 'Withdraw'}
           </button>
         </form>
       </div>

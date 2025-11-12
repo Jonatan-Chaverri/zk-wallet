@@ -180,3 +180,22 @@ export function generateKeyBytes(pk: { x: string; y: string }): Uint8Array {
 
   return pubBytes;
 }
+
+export const bytesToHex = (bytes: Uint8Array): string => {
+  return Array.from(bytes)
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('');
+};
+
+// Helper function to extract 32 bytes as hex string
+export const extract32Bytes = (bytes: Uint8Array, offset: number): string => {
+  return bytesToHex(bytes.slice(offset, offset + 32));
+};
+
+// Helper function to convert hex string to decimal string (for Noir Field elements)
+export const hexToDecimal = (hex: string): string => {
+  // Remove '0x' prefix if present
+  const cleanHex = hex.startsWith('0x') ? hex.slice(2) : hex;
+  // Convert to BigInt and then to decimal string
+  return BigInt('0x' + cleanHex).toString();
+};

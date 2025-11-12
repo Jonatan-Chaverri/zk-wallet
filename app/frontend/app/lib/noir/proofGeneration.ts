@@ -165,6 +165,11 @@ export async function generateWithdrawProof(params: WithdrawParams): Promise<Pro
 
   const noir = new Noir(withdrawCircuit as any);
 
+  const amount = params.amount.slice(0, -6);
+  if (amount.length > 13) {
+    throw new Error('Amount is too large');
+  }
+
   // Prepare inputs - Noir.js requires all inputs to be strings
   const inputs: InputMap = {
     sender_priv_key: params.senderPrivKey,
@@ -174,7 +179,7 @@ export async function generateWithdrawProof(params: WithdrawParams): Promise<Pro
     old_balance_x2: params.oldBalanceX2,
     sender_address: params.senderAddress,
     token: params.token,
-    amount: params.amount
+    amount: amount
   };
 
   console.log('[ProofGen] Executing circuit...');

@@ -9,7 +9,7 @@ import { useProofs } from '../hooks/useProofs';
 import { apiClient } from '../lib/utils/api';
 import { savePrivateKey, getPrivateKey } from '../lib/utils/privateKeyStorage';
 import { generateRandomness } from '../lib/noir/proofGeneration';
-import { convertDepositPublicInputs } from '../lib/utils/publicInputs';
+import { convertDepositPublicInputs, parseUserBalance } from '../lib/utils/publicInputs';
 import { Address, parseUnits } from 'viem';
 
 export default function DepositPage() {
@@ -134,42 +134,7 @@ export default function DepositPage() {
       const currentBalance = await balanceOfEnc(token as Address, address);
       
       // Convert current balance from Uint8Array to the format expected by prover
-      const currentBalanceBytes = currentBalance instanceof Uint8Array 
-        ? currentBalance 
-        : new Uint8Array(currentBalance);
-
-      // Helper function to convert bytes to hex string
-      const bytesToHex = (bytes: Uint8Array): string => {
-        return Array.from(bytes)
-          .map(b => b.toString(16).padStart(2, '0'))
-          .join('');
-      };
-
-      // Helper function to extract 32 bytes as hex string
-      const extract32Bytes = (bytes: Uint8Array, offset: number): string => {
-        return bytesToHex(bytes.slice(offset, offset + 32));
-      };
-
-      // Helper function to convert hex string to decimal string (for Noir Field elements)
-      const hexToDecimal = (hex: string): string => {
-        // Remove '0x' prefix if present
-        const cleanHex = hex.startsWith('0x') ? hex.slice(2) : hex;
-        // Convert to BigInt and then to decimal string
-        return BigInt('0x' + cleanHex).toString();
-      };
-
-      // Parse balance into two points
-      // oldBalanceX1: x = [0..32], y = [32..64]
-      // oldBalanceX2: x = [64..96], y = [96..128]
-      // Convert hex strings to decimal strings for Noir Field elements
-      const oldBalanceX1 = {
-        x: hexToDecimal(extract32Bytes(currentBalanceBytes, 0)),
-        y: hexToDecimal(extract32Bytes(currentBalanceBytes, 32)),
-      };
-      const oldBalanceX2 = {
-        x: hexToDecimal(extract32Bytes(currentBalanceBytes, 64)),
-        y: hexToDecimal(extract32Bytes(currentBalanceBytes, 96)),
-      };
+      const { oldBalanceX1, oldBalanceX2 } = parseUserBalance(currentBalance);
 
       // Create sender public key as Point
       // Convert hex strings to decimal strings for Noir Field elements
