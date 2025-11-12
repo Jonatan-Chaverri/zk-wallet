@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { Contract, BrowserProvider, JsonRpcProvider } from 'ethers';
 import { apiClient, clearConfigCache } from '../lib/utils/api';
 import { useWallet } from './useWallet';
+import { ensureArbitrumSepolia } from '../lib/utils/network';
 import type { Address } from 'viem';
 import type { Ciphertext } from '../lib/types';
 import confidentialERC20Abi from '../lib/contracts/confidentialERC20Abi.json';
@@ -85,6 +86,11 @@ export function useConfidentialERC20() {
 
   // Get contract instance
   const getContract = async (): Promise<Contract> => {
+    // Ensure we're on Arbitrum Sepolia before any transaction
+    if (typeof window !== 'undefined' && (window as any).ethereum) {
+      await ensureArbitrumSepolia();
+    }
+
     // Validate config and address - fetch if missing
     let currentConfig = config;
     if (!currentConfig || !currentConfig.address) {
@@ -158,7 +164,6 @@ export function useConfidentialERC20() {
     }
 
     const pk = await readOnlyContract.getUserPk(userAddress);
-    // Convert BigNumber array to Uint8Array
     return new Uint8Array(pk.map((x: any) => Number(x)));
   };
 
@@ -297,6 +302,11 @@ export function useConfidentialERC20() {
     wethAddress: Address,
     amount: bigint
   ): Promise<string> => {
+    // Ensure we're on Arbitrum Sepolia before any transaction
+    if (typeof window !== 'undefined' && (window as any).ethereum) {
+      await ensureArbitrumSepolia();
+    }
+
     if (!provider) {
       throw new Error('Provider not available');
     }

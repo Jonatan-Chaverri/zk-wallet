@@ -189,20 +189,10 @@ export function useUser(address: Address | null) {
           
           // Verify registration by calling getUserPk on the contract
           const registeredPk = await getUserPk(address);
-          
-          // Check if the registered public key is all zeros (registration failed)
           const isAllZeros = registeredPk.every(byte => byte === 0);
           
           if (isAllZeros) {
             console.error('❌ Registration verification failed: getUserPk returned all zeros');
-            // Delete the user from backend since registration failed
-            try {
-              await apiClient.deleteUser(address);
-              console.log('✅ Deleted user from backend due to failed registration');
-            } catch (deleteError: any) {
-              console.error('⚠️ Failed to delete user from backend:', deleteError);
-            }
-            
             // Clear local state
             setUser(null);
             setIsRegistered(false);
@@ -216,14 +206,13 @@ export function useUser(address: Address | null) {
           
           console.log('✅ Registration verified: Public key successfully registered on contract');
         } catch (contractError: any) {
-          // If it's our custom error about failed registration, rethrow it
-          if (contractError.message?.includes('Registration failed')) {
-            throw contractError;
+          try {
+            await apiClient.deleteUser(address);
+            console.log('✅ Deleted user from backend due to failed registration');
+          } catch (deleteError: any) {
+            console.error('⚠️ Failed to delete user from backend:', deleteError);
           }
-          
-          // Log error but don't fail the registration - user is still registered in backend
-          console.error('⚠️ Failed to register public key in contract:', contractError);
-          // Optionally, you could set a warning state here
+          throw contractError;
         }
       } else {
         console.warn('⚠️ Contract not configured, skipping public key registration');
