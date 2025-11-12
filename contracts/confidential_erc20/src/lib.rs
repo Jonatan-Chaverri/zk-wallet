@@ -32,6 +32,7 @@ use stylus_sdk::{
     alloy_primitives::{Address, FixedBytes, U256, keccak256, Bytes},
     alloy_sol_types::{sol, SolCall}, // 👈 bring SolCall trait into scope for .abi_encode()
 };
+use core::str::FromStr;
 
 #[derive(PartialEq, Eq)]
 pub struct Point {
@@ -81,6 +82,22 @@ pub struct TransferConfidentialProofInputs {
     pub sender_new_balance: Ciphertext,
     pub token: Address,
 }
+
+pub const WETH_TOKEN_ADDRESS: &str = "0x2836ae2ea2c013acd38028fd0c77b92cccfa2ee4";
+
+/// G_GENERATOR_X = 1
+pub const G_GENERATOR_X: [u8; 32] = [
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
+];
+// G_GENERATOR_Y = sqrt(-16) = 17631683881184975370165255887551781615748388533673675138860
+pub const G_GENERATOR_Y: [u8; 32] = [
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 
+    0xCF, 0x13, 0x5E, 0x75, 0x06, 0xA4, 0x5D, 0x63, 
+    0x2D, 0x27, 0x0D, 0x45, 0xF1, 0x18, 0x12, 0x94, 
+    0x83, 0x3F, 0xC4, 0x8D, 0x82, 0x3F, 0x27, 0x2C
+];
+
 
 // Main storage
 sol_storage! {
@@ -179,6 +196,10 @@ impl ConfidentialERC20 {
         self.verifier.set(verifier);
         self.owner.set(self.vm().msg_sender());
         self.chain_id.set(chain_id);
+
+        // For now we only support WETH token
+        let weth_token_address = Address::from_str(WETH_TOKEN_ADDRESS).unwrap();
+        self.supported_tokens.setter(weth_token_address).set(true);
         Ok(())
     }
 
@@ -207,6 +228,15 @@ impl ConfidentialERC20 {
             user: sender,
             pk: public_key.into(),
         });
+
+        // Set the initial balance to 0
+        let initial_balance = Ciphertext {
+            x1: Point { x: G_GENERATOR_X, y: G_GENERATOR_Y },
+            x2: Point { x: *pk_x, y: *pk_y },
+        };
+
+        let token = Address::from_str(WETH_TOKEN_ADDRESS).unwrap();
+        self._set_balance(token, sender, &initial_balance);
 
         Ok(())
     }
@@ -327,13 +357,6 @@ impl ConfidentialERC20 {
     }
 
     // --- Admin ---
-
-    pub fn set_supported_token(&mut self, token: Address, allowed: bool) -> Result<(), Vec<u8>> {
-        self._only_owner()?;
-        self.supported_tokens.setter(token).set(allowed);
-        evm::log(TokenAllowlistUpdated { token, allowed });
-        Ok(())
-    }
 
     pub fn set_verifier(&mut self, verifier: Address) -> Result<(), Vec<u8>> {
         self._only_owner()?;
@@ -641,7 +664,11 @@ impl ConfidentialERC20 {
 
         let token = deposit_proof_inputs.token;
         let user_address = deposit_proof_inputs.user_address;
-        let amount = deposit_proof_inputs.amount;
+        
+        let raw_amount = deposit_proof_inputs.amount;
+        // Since ELGAMAL requires amounts not bigger than 40 bits, we need to scale the amount by 10^6
+        let scale_factor = U256::from(1000000);
+        let amount = raw_amount * scale_factor;
         let new_balance = deposit_proof_inputs.new_balance;
 
         // Move plain tokens into custody

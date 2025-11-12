@@ -122,7 +122,7 @@ export default function MyAccountPage() {
     const [x, y] = balECPointEncoded.split('|');
     const bal = curveWasm.grumpkin_bsgs_str(x, y).toString();
     if ('0' == bal) {
-      throw new Error('Wrong private key');
+      return '0.00';
     }
     return bal.substring(0, bal.length - 2) + '.' + bal.substring(bal.length - 2);
   };

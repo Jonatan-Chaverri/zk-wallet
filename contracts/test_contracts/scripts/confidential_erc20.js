@@ -103,13 +103,6 @@ async function main() {
   const verifier = await contract.getVerifier();
   console.log("Verifier:", verifier.toString());
 
-
-  console.log("\n\nSetting support for eth token");
-  const tx_token = await contract.setSupportedToken(process.env.WETH_TOKEN_ADDRESS, true);
-  console.log("✅ Tx hash:", tx_token.hash);
-  const is_supported_token = await contract.isSupportedToken(process.env.WETH_TOKEN_ADDRESS);
-  console.log("Is ETH supported:", is_supported_token.toString());
-
   console.log("\n\nGetting initial balance of user");
   const balance = await contract.balanceOfEnc(process.env.WETH_TOKEN_ADDRESS, signer.address);
   const is_zero = balance.every((x) => x === 0n);

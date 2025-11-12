@@ -1,43 +1,48 @@
 // Crypto utilities for ElGamal encryption/decryption over BabyJub
 // NOTE: This is a placeholder - actual implementation requires Noir circuits or WASM
 
+import { GrumpkinScalar, Schnorr } from '@aztec/aztec.js';
+import { Buffer } from 'buffer/';
 import type { BabyJubKeyPair, Ciphertext } from '../types';
 
 /**
- * Generate a BabyJub key pair
- * In production, this should use a proper cryptographic library
- * For now, this is a placeholder that generates deterministic keys from a seed
+ * Convert Fr (field element) to 32-byte hex string
+ */
+function frTo32BytesHex(fr: any): string {
+  const buf = fr.toBuffer(); // usually 32 bytes
+  if (buf.length !== 32) {
+    throw new Error(`Fr.toBuffer() expected 32 bytes, got ${buf.length}`);
+  }
+  return `0x${Buffer.from(buf).toString('hex')}`;
+}
+
+/**
+ * Generate a BabyJub key pair using Aztec.js (Grumpkin curve)
+ * This matches the key generation used in the Noir circuits
  */
 export async function generateBabyJubKeyPair(seed?: string): Promise<BabyJubKeyPair> {
-  // TODO: Implement proper BabyJub key generation
-  // This should use a cryptographic library that supports BabyJubJub curves
-  // For now, we'll use a simple hash-based approach (NOT SECURE FOR PRODUCTION)
+  // Generate private key (GrumpkinScalar)
+  const sk = seed 
+    ? GrumpkinScalar.fromString(seed)
+    : GrumpkinScalar.random();
   
-  const seedBytes = seed 
-    ? new TextEncoder().encode(seed)
-    : crypto.getRandomValues(new Uint8Array(32));
+  // Compute public key using Schnorr
+  const schnorr = new Schnorr();
+  const pk_raw = await schnorr.computePublicKey(sk); // { x: Fr, y: Fr }
   
-  // Hash the seed to get a private key
-  const hashBuffer = await crypto.subtle.digest('SHA-256', seedBytes);
-  const privateKey = Array.from(new Uint8Array(hashBuffer))
-    .map(b => b.toString(16).padStart(2, '0'))
-    .join('');
+  // Convert Fr values to hex strings (32 bytes each)
+  const publicKey = {
+    x: frTo32BytesHex(pk_raw.x),
+    y: frTo32BytesHex(pk_raw.y),
+  };
   
-  // For now, generate a deterministic public key from the private key
-  // In production, this must use proper BabyJub point multiplication
-  const pubKeyHash = await crypto.subtle.digest('SHA-256', new Uint8Array(hashBuffer));
-  const pubKeyBytes = new Uint8Array(pubKeyHash);
+  // Convert private key to hex string
+  const privateKeyBuffer = sk.toBuffer();
+  const privateKey = `0x${Buffer.from(privateKeyBuffer).toString('hex')}`;
   
   return {
-    privateKey: `0x${privateKey}`,
-    publicKey: {
-      x: `0x${Array.from(pubKeyBytes.slice(0, 32))
-        .map(b => b.toString(16).padStart(2, '0'))
-        .join('')}`,
-      y: `0x${Array.from(pubKeyBytes.slice(0, 32))
-        .map(b => b.toString(16).padStart(2, '0'))
-        .join('')}`,
-    },
+    privateKey,
+    publicKey,
   };
 }
 
@@ -89,7 +94,7 @@ export async function decryptValue(
   // For now, return 0 as placeholder
   
   console.warn('Decryption not implemented - requires Noir circuits');
-  return 0n;
+  return BigInt(0);
 }
 
 /**

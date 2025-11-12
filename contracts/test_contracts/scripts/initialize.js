@@ -19,10 +19,6 @@ async function main() {
     } else {
       console.log("Contract already initialized");
     }
-
-    console.log("\n\nSetting support for eth token");
-    const tx_token = await contract.setSupportedToken(process.env.WETH_TOKEN_ADDRESS, true);
-    console.log("✅ Tx hash:", tx_token.hash);
 }
 
 main().catch(console.error);

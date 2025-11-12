@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  reactStrictMode: true,       // enable recommended defaults
+  reactStrictMode: false,       // enable recommended defaults
   typescript: {
     ignoreBuildErrors: true,
   },
@@ -14,6 +14,16 @@ const nextConfig: NextConfig = {
 
   // 👇 optional — helpful for dynamic apps
   typedRoutes: false,
+
+  // WebAssembly support for confidential-transfers and Noir
+  webpack: (config) => {
+    config.experiments = {
+      asyncWebAssembly: true,
+      syncWebAssembly: true,
+      layers: true,
+    };
+    return config
+  },
 };
 
 export default nextConfig;
