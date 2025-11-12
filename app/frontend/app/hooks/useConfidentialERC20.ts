@@ -197,9 +197,21 @@ export function useConfidentialERC20() {
     const inputsArray = Array.isArray(proofInputs) ? proofInputs : Array.from(proofInputs);
     const proofArray = Array.isArray(proof) ? proof : Array.from(proof);
 
-    const tx = await contract.deposit(inputsArray, proofArray);
+    // Estimate gas if possible, otherwise use a high gas limit for complex zk-proof transactions
+    let gasLimit = BigInt(15000000); // Default high gas limit for zk-proof transactions
+    try {
+      const estimatedGas = await contract.deposit.estimateGas(inputsArray, proofArray);
+      // Add 20% buffer to estimated gas
+      gasLimit = (estimatedGas * BigInt(120)) / BigInt(100);
+      console.log('Estimated gas:', estimatedGas.toString(), 'Using gas limit:', gasLimit.toString());
+    } catch (err) {
+      console.warn('Gas estimation failed, using default gas limit:', err);
+      // Keep the default high gas limit
+    }
+
+    const tx = await contract.deposit(inputsArray, proofArray, { gasLimit });
     const receipt = await tx.wait();
-    
+
     if (receipt.status !== 1) {
       throw new Error('Deposit transaction failed');
     }
