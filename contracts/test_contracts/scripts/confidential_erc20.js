@@ -10,7 +10,6 @@ const weth = require("./weth");
 const abiPath = path.join(process.cwd(), "abis", "confidential_erc20_abi_flat.txt");
 const ABI = JSON.parse(fs.readFileSync(abiPath, "utf8"));
 
-
 async function registerUserKey(contract, publicKey, sk) {
   const tx = await contract.registerUserPk(publicKey);
   utils.writeKeyToFile(sk);

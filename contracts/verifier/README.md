@@ -56,4 +56,3 @@ The Hardhat config supports:
 - **hardhat**: Local development network
 - **localhost**: Local node at http://127.0.0.1:8545
 - **sepolia**: Sepolia testnet (Arbitrum rollup)
-

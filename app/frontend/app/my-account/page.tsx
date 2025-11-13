@@ -173,8 +173,6 @@ export default function MyAccountPage() {
         c2: { x: c2x, y: c2y }
       };
 
-      console.log('balEnc:', balEnc);
-
       const decryptedBalance = decryptBalance(balEnc, privateKeyInput.trim());
       const decryptedBalanceInt = parseInt(decryptedBalance) / 10**10;
       setBalance(decryptedBalanceInt.toString());

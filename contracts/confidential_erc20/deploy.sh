@@ -1,4 +1,7 @@
 #!/bin/bash
+# Deploy the confidential ERC20 contract to the Stylus testnet
+# Usage: ./deploy.sh [--test]
+# --test: Run cargo stylus check instead of deploy
 set -e
 
 # Load environment variables

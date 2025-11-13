@@ -208,7 +208,7 @@ export function useUser(address: Address | null) {
         } catch (contractError: any) {
           try {
             await apiClient.deleteUser(address);
-            console.log('✅ Deleted user from backend due to failed registration');
+            console.log('⚠️ Deleted user from backend due to failed registration');
           } catch (deleteError: any) {
             console.error('⚠️ Failed to delete user from backend:', deleteError);
           }

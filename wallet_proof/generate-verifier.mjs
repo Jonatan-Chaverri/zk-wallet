@@ -30,18 +30,18 @@ async function generateAllVerifiers() {
   const circuits = [
     {
       name: 'Deposit',
-      path: './wallet_proof/target/deposit.json',
-      output: './contracts/verifier/contracts/DepositVerifier.sol'
+      path: './target/deposit.json',
+      output: './contracts/DepositVerifier.sol'
     },
     {
       name: 'Withdraw',
-      path: './wallet_proof/target/withdraw.json',
-      output: './contracts/verifier/contracts/WithdrawVerifier.sol'
+      path: './target/withdraw.json',
+      output: './contracts/WithdrawVerifier.sol'
     },
     {
       name: 'Transfer',
-      path: './wallet_proof/target/transfer.json',
-      output: './contracts/verifier/contracts/TransferVerifier.sol'
+      path: './target/transfer.json',
+      output: './contracts/TransferVerifier.sol'
     }
   ];
 
