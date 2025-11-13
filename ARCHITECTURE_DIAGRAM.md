@@ -11,7 +11,7 @@
 │  │                                                                     │     │
 │  │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐             │     │
 │  │  │   Wallet UI  │  │  Proof Gen   │  │   Supabase   │             │     │
-│  │  │   (Nextjs)    │  │  (NoirJS)   │  │ (Publick Keys)│             │     │
+│  │  │   (Nextjs)    │  │  (NoirJS)   │  │ (Public Keys)│             │     │
 │  │  └──────────────┘  └──────────────┘  └──────────────┘             │     │
 │  │         │                  │                  │                     │     │
 │  │         └──────────────────┼──────────────────┘                     │     │
@@ -30,71 +30,87 @@
 │  │                            │                                        │     │
 │  └────────────────────────────┼────────────────────────────────────────┘     │
 │                               │                                              │
-│                               │ Proof (6,976 bytes)                          │
-│                               │ + Public Inputs                              │
+│                               │ Proof (6,976 bytes) + Public Inputs          │
+│                               │                                              │
+│                               │ Direct RPC Call (viem/wagmi)                 │
+│                               │ User signs transaction in browser            │
 │                               ▼                                              │
 └─────────────────────────────────────────────────────────────────────────────┘
                                 │
-                                │ RPC Call (viem)
+                                │ Transaction to ConfidentialERC20
                                 │
                                 ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                    ARBITRUM SEPOLIA TESTNET                                  │
 │                                                                              │
 │  ┌──────────────────────────────────────────────────────────────────────┐   │
-│  │                      VERIFIER CONTRACTS                              │   │
+│  │              CONFIDENTIAL ERC20 (Main Contract)                      │   │
+│  │                  (Arbitrum Stylus WASM)                              │   │
+│  │                                                                       │   │
+│  │  Receives transactions from frontend:                                │   │
+│  │  • deposit(proof, publicInputs, amount)                              │   │
+│  │  • transfer(proof, publicInputs, recipient)                          │   │
+│  │  • withdraw(proof, publicInputs, amount)                             │   │
+│  │                                                                       │   │
+│  │  Stores:                                                             │   │
+│  │  • User public keys (Grumpkin)                                        │   │
+│  │  • Encrypted balances (ElGamal ciphertexts)                          │   │
+│  │  • Token custody                                                     │   │
+│  │                                                                       │   │
+│  │  Then calls appropriate verifier ──────────────┐                     │   │
+│  └────────────────────────────────────────────────┼──────────────────────┘   │
+│                                                   │                          │
+│  ┌────────────────────────────────────────────────┼──────────────────────┐   │
+│  │                 VERIFIER CONTRACTS             ▼                      │   │
 │  │                                                                       │   │
 │  │  ┌────────────────────────────────────────────────────────────┐     │   │
 │  │  │  DepositVerifier.sol  (92KB)                               │     │   │
 │  │  │  Address: 0xC43C243E2e1667Af1c3d36Df8e4d76B302642970      │     │   │
 │  │  │  • Verifies deposit proofs (6,976 bytes)                   │     │   │
-│  │  │  • Updates encrypted balance                               │     │   │
+│  │  │  • Called by ConfidentialERC20                             │     │   │
+│  │  │  • Returns: proof valid ✅ or invalid ❌                    │     │   │
 │  │  └────────────────────────────────────────────────────────────┘     │   │
 │  │                                                                       │   │
 │  │  ┌────────────────────────────────────────────────────────────┐     │   │
 │  │  │  WithdrawVerifier.sol (92KB)                               │     │   │
 │  │  │  Address: 0x59b1800deDB9AeC940E96F78B650DCDCeA1F5449      │     │   │
 │  │  │  • Verifies withdraw proofs (6,976 bytes)                  │     │   │
-│  │  │  • Updates encrypted balance & releases funds              │     │   │
+│  │  │  • Called by ConfidentialERC20                             │     │   │
+│  │  │  • Returns: proof valid ✅ or invalid ❌                    │     │   │
 │  │  └────────────────────────────────────────────────────────────┘     │   │
 │  │                                                                       │   │
 │  │  ┌────────────────────────────────────────────────────────────┐     │   │
 │  │  │  TransferVerifier.sol (92KB)                               │     │   │
 │  │  │  Address: 0xe17d3034062113d1eD4526A8C58f60645E6f5f6a      │     │   │
 │  │  │  • Verifies transfer proofs (6,976 bytes)                  │     │   │
-│  │  │  • Updates both sender & receiver encrypted balances       │     │   │
-│  │  │  • Uses homomorphic addition (no receiver private key!)    │     │   │
+│  │  │  • Called by ConfidentialERC20                             │     │   │
+│  │  │  • Uses homomorphic addition validation                    │     │   │
+│  │  │  • Returns: proof valid ✅ or invalid ❌                    │     │   │
 │  │  └────────────────────────────────────────────────────────────┘     │   │
 │  └──────────────────────────────────────────────────────────────────────┘   │
-│                                                                              │
-│  Database: Supabase PostgreSQL                                              │
-│  • Stores user public keys                                                  │
-│  • Tracks deployed wallet addresses                                         │
-│  • Encrypted balance state                                                  │
-│  • Transaction logs (deposit/transfer/withdraw)                             │
-│  • Contract registry (verifiers, tokens)                                    │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
+
 
 ---
 
 ## Deposit Workflow
 
 ```
-┌─────────────┐
-│    USER     │
-│  (Browser)  │
-└──────┬──────┘
-       │
-       │ 1. Clicks "Deposit 1000 tokens"
-       │
-       ▼
+            ┌─────────────┐
+            │    USER     │
+            │  (Browser)  │
+            └──────┬──────┘
+                   │
+                   │ 1. Clicks "Deposit 1000 tokens"
+                   │
+                   ▼
 ┌──────────────────────────────────────────────────────┐
 │              FRONTEND: Generate Proof                │
 │                                                       │
 │  Inputs (Private):                                   │
 │  • sender_priv_key: 42                               │
-│  • current_balance: 500 (decrypted)                  │
+│  • current_balance: 500 (encrypted)                  │
 │  • r_new_balance: 222 (fresh randomness)             │
 │                                                       │
 │  Inputs (Public):                                    │
@@ -106,7 +122,7 @@
 │                                                       │
 │  Circuit Execution:                                  │
 │  1. Verify sender owns private key                   │
-│  2. Decrypt old balance, verify it matches           │
+│  2. Encrypt new amount           │
 │  3. Compute new_balance = 500 + 1000 = 1500          │
 │  4. Encrypt new_balance with fresh randomness        │
 │  5. Generate proof (~2 seconds)                      │
@@ -117,41 +133,52 @@
 │  • revealed_amount: 1000 (for custody)               │
 └───────────────────────┬──────────────────────────────┘
                         │
-                        │ 2. POST /api/transaction/deposit
-                        │    { proof, newBalanceCt, amount }
+                        │ 2. DIRECT CALL to Arbitrum (viem/wagmi)
+                        │    User signs transaction in browser
+                        │    ConfidentialERC20.deposit(proof, publicInputs, 1000)
                         ▼
 ┌──────────────────────────────────────────────────────┐
-│              BACKEND: Relay Transaction              │
+│    ARBITRUM: ConfidentialERC20 (Stylus WASM)         │
 │                                                       │
-│  1. Validate proof format                            │
-│  2. Sign transaction with relay wallet               │
-│  3. Submit to DepositVerifier contract               │
-│  4. Pay gas on behalf of user                        │
+│  1. Receive deposit transaction from user            │
+│  2. Extract proof and public inputs                  │
+│  3. Call DepositVerifier.verify(proof, publicInputs) │
 └───────────────────────┬──────────────────────────────┘
                         │
-                        │ 3. Contract call:
-                        │    verifyAndDeposit(proof, publicInputs)
+                        │ 3. Verifier called internally
                         ▼
 ┌──────────────────────────────────────────────────────┐
 │         ARBITRUM: DepositVerifier.sol                │
-│                                                       │
+│        (0xC43C243E2e1667Af1c3d36Df8e4d76B302642970)  │
+│                                                      │
 │  1. Verify proof (6,976 bytes) with UltraHonk        │
 │  2. Check public inputs match                        │
-│  3. Transfer 1000 tokens to contract custody         │
-│  4. Update on-chain encrypted balance:               │
+│  3. Return: proof valid ✅ or invalid ❌            │
+└───────────────────────┬──────────────────────────────┘
+                        │
+                        │ 4. If proof valid ✅
+                        ▼
+┌──────────────────────────────────────────────────────┐
+│    ARBITRUM: ConfidentialERC20 continues             │
+│                                                      │
+│  4. Transfer 1000 tokens from user to contract       │
+│  5. Update on-chain encrypted balance:               │
 │     old_balance_ct → new_balance_ct (Enc(1500))      │
-│                                                       │
+│                                                      │
 │  ✅ Transaction succeeds                             │
 │  📊 New encrypted balance stored on-chain            │
 └───────────────────────┬──────────────────────────────┘
                         │
-                        │ 4. Transaction receipt
+                        │ 5. Transaction receipt (tx_hash)
+                        │
+                        ┴
+                        │
                         ▼
                 ┌─────────────┐
                 │    USER     │
                 │  Balance:   │
                 │  Enc(1500)  │
-                │  (visible   │
+                │  (visible   │              
                 │  only to    │
                 │  user)      │
                 └─────────────┘
@@ -190,7 +217,7 @@
 │                                                                   │
 │  Circuit Execution:                                              │
 │  1. Verify sender owns private key                               │
-│  2. Decrypt sender's old balance, verify it matches              │
+│  2. Encrypt sender's old balance, verify it matches              │
 │  3. Check sufficient balance: 1500 >= 500 ✅                     │
 │  4. Compute sender new_balance = 1500 - 500 = 1000              │
 │  5. Encrypt sender new_balance: Enc(1000)                        │
@@ -205,33 +232,60 @@
 │  • receiver_new_balance_ct: Enc(800)                             │
 └───────────────────────┬──────────────────────────────────────────┘
                         │
-                        │ 2. POST /api/transaction/transfer
+                        │ 2. DIRECT CALL to Arbitrum (viem/wagmi)
+                        │    User signs transaction in browser
+                        │    ConfidentialERC20.transfer(proof, publicInputs, recipient)
+                        ▼
+┌──────────────────────────────────────────────────────────────────┐
+│    ARBITRUM: ConfidentialERC20 (Stylus WASM)                     │
+│                                                                   │
+│  1. Receive transfer transaction from sender                     │
+│  2. Extract proof and public inputs                              │
+│  3. Call TransferVerifier.verify(proof, publicInputs)            │
+└───────────────────────┬──────────────────────────────────────────┘
+                        │
+                        │ 3. Verifier called internally
                         ▼
 ┌──────────────────────────────────────────────────────────────────┐
 │         ARBITRUM: TransferVerifier.sol                           │
+│         (0xe17d3034062113d1eD4526A8C58f60645E6f5f6a)             │
 │                                                                   │
-│  1. Verify proof (6,976 bytes)                                   │
-│  2. Update both encrypted balances atomically:                   │
+│  1. Verify proof (6,976 bytes) with UltraHonk                    │
+│  2. Validate homomorphic addition correctness                    │
+│  3. Return: proof valid ✅ or invalid ❌                          │
+└───────────────────────┬──────────────────────────────────────────┘
+                        │
+                        │ 4. If proof valid ✅
+                        ▼
+┌──────────────────────────────────────────────────────────────────┐
+│    ARBITRUM: ConfidentialERC20 continues                         │
+│                                                                   │
+│  4. Update both encrypted balances atomically:                   │
 │     • Sender:   Enc(1500) → Enc(1000)                            │
 │     • Receiver: Enc(300)  → Enc(800)                             │
 │                                                                   │
-│  ✅ No tokens move (already in shielded pool)                    │
-│  ✅ Both balances updated privately                              │
+│  ✅ No tokens move (already in contract custody)                 │
+│  ✅ Both balances updated privately on-chain                     │
 └───────────────────────┬──────────────────────────────────────────┘
                         │
-                        │ 3. Both users see updated balances
+                        │ 5. Transaction receipt (tx_hash)
                         │
        ┌────────────────┴─────────────────┐
        ▼                                  ▼
-┌─────────────┐                    ┌─────────────┐
-│  SENDER     │                    │  RECEIVER   │
-│  Balance:   │                    │  Balance:   │
-│  Enc(1000)  │                    │  Enc(800)   │
-│  (only      │                    │  (only      │
-│  sender     │                    │  receiver   │
-│  can        │                    │  can        │
-│  decrypt)   │                    │  decrypt)   │
-└─────────────┘                    └─────────────┘
+┌─────────────┐ 
+│  SENDER     │
+│  Balance:   │
+│  Enc(1000)  │
+│  sender     │
+│  can        │                    ┌─────────────┐
+│  decrypt)   │                    │  RECEIVER   │
+└─────────────┘                    │  Balance:   │
+                                   │  Enc(800)   │
+                                   │  (only      │
+                                   │  receiver   │
+                                   │  can        │
+                                   │  decrypt)   │
+                                   └─────────────┘
 ```
 
 **Key Innovation:** The receiver's new balance is computed using **homomorphic addition** on the encrypted values. The receiver never needs to share their private key!
@@ -266,7 +320,7 @@
 │                                                       │
 │  Circuit Execution:                                  │
 │  1. Verify sender owns private key                   │
-│  2. Decrypt old balance, verify it matches           │
+│  2. Encrypt old balance, verify it matches           │
 │  3. Check sufficient balance: 1000 >= 400 ✅         │
 │  4. Compute new_balance = 1000 - 400 = 600           │
 │  5. Encrypt new_balance with fresh randomness        │
@@ -278,27 +332,52 @@
 │  • revealed_amount: 400 (to release)                 │
 └───────────────────────┬──────────────────────────────┘
                         │
-                        │ 2. POST /api/transaction/withdraw
+                        │ 2. DIRECT CALL to Arbitrum (viem/wagmi)
+                        │    User signs transaction in browser
+                        │    ConfidentialERC20.withdraw(proof, publicInputs, 400)
+                        ▼
+┌──────────────────────────────────────────────────────┐
+│    ARBITRUM: ConfidentialERC20 (Stylus WASM)         │
+│                                                       │
+│  1. Receive withdraw transaction from user           │
+│  2. Extract proof and public inputs                  │
+│  3. Call WithdrawVerifier.verify(proof, publicInputs)│
+└───────────────────────┬──────────────────────────────┘
+                        │
+                        │ 3. Verifier called internally
                         ▼
 ┌──────────────────────────────────────────────────────┐
 │         ARBITRUM: WithdrawVerifier.sol               │
+│         (0x59b1800deDB9AeC940E96F78B650DCDCeA1F5449)  │
 │                                                       │
-│  1. Verify proof (6,976 bytes)                       │
-│  2. Update encrypted balance:                        │
-│     Enc(1000) → Enc(600)                             │
-│  3. Transfer 400 tokens from contract to user        │
-│                                                       │
-│  ✅ Tokens released from shielded pool               │
-│  ✅ New encrypted balance stored                     │
+│  1. Verify proof (6,976 bytes) with UltraHonk        │
+│  2. Check public inputs match                        │
+│  3. Return: proof valid ✅ or invalid ❌              │
 └───────────────────────┬──────────────────────────────┘
                         │
-                        │ 3. User receives 400 tokens
+                        │ 4. If proof valid ✅
+                        ▼
+┌──────────────────────────────────────────────────────┐
+│    ARBITRUM: ConfidentialERC20 continues             │
+│                                                       │
+│  4. Update encrypted balance:                        │
+│     Enc(1000) → Enc(600)                             │
+│  5. Transfer 400 tokens from contract to user        │
+│                                                       │
+│  ✅ Tokens released from contract custody            │
+│  ✅ New encrypted balance stored on-chain            │
+└───────────────────────┬──────────────────────────────┘
+                        │
+                        │ 6. Transaction receipt (tx_hash)
+                        │
+                        ┴
+                        │
                         ▼
                 ┌─────────────┐
                 │    USER     │
                 │  Encrypted  │
                 │  Balance:   │
-                │  Enc(600)   │
+                │  Enc(600)   │              
                 │             │
                 │  Wallet:    │
                 │  +400 tokens│
@@ -312,31 +391,34 @@
 ### What's Hidden (Private)
 - ❌ **Account balances** - Always encrypted with ElGamal
 - ❌ **Transfer amounts** - Never revealed on-chain
-- ❌ **Transaction sender** (when using relay)
-- ❌ **Who paid gas** (backend relayer)
 - ❌ **Private keys** - Never leave the browser
+- ❌ **Actual balance values** - Only encrypted ciphertexts visible
 
 ### What's Public
+- ✅ **Transaction sender address** - User signs transaction in browser, visible on-chain
 - ✅ **Encrypted balance ciphertexts** - (unreadable without private key)
 - ✅ **Proof verification** - Anyone can verify proofs are valid
 - ✅ **Transaction occurred** - But not the amount
-- ✅ **Sender/receiver addresses** - Smart contract addresses visible
+- ✅ **Gas paid by user** - User pays gas for their own transactions
+- ✅ **Receiver address** - Visible in transfer transactions
 
 ---
 
 ## Transaction Logging & Database
 
-**Recent Addition (PR #24):** The system now includes transaction logging to the database for audit trails and user transaction history.
+**Recent Addition (PR #24):** The system now includes **optional** transaction logging to the database for audit trails and user transaction history.
 
-### Transaction Logging Flow
+**Important:** Transaction logging is done AFTER the transaction succeeds on-chain. The backend is NOT involved in the transaction submission flow.
+
+### Transaction Logging Flow (Post-Transaction)
 
 ```
 ┌────────────────────────────────────────────────────────┐
-│              FRONTEND: After Transaction               │
+│              FRONTEND: After Blockchain TX             │
 │                                                         │
-│  1. User completes deposit/transfer/withdraw           │
-│  2. Transaction is submitted to blockchain             │
-│  3. Receive tx_hash from blockchain                    │
+│  1. User transaction succeeds on Arbitrum              │
+│  2. Frontend receives tx_hash from blockchain          │
+│  3. OPTIONAL: Log to backend for audit trail           │
 │  4. Call apiClient.registerTransaction({               │
 │       tx_hash: "0x...",                                │
 │       type: "DEPOSIT" | "TRANSFER" | "WITHDRAW",       │
@@ -345,6 +427,8 @@
 │       sender_address: "0x...",                         │
 │       receiver_address: "0x..." (for transfers)        │
 │     })                                                 │
+│                                                         │
+│  Note: This is for logging only, NOT for relaying TX   │
 └─────────────────────┬──────────────────────────────────┘
                       │
                       │ POST /api/transaction
@@ -355,7 +439,7 @@
 │  1. Validate tx_hash format (0x + 64 hex chars)        │
 │  2. Check if transaction already logged (prevent dups) │
 │  3. Resolve contract_id from CONFIDENTIAL_ERC20        │
-│  4. Store in PostgreSQL:                               │
+│  4. Store in PostgreSQL (audit trail):                 │
 │     • tx_hash (unique, lowercase)                      │
 │     • type (deposit/transfer/withdraw)                 │
 │     • status (default: "confirmed")                    │
@@ -363,6 +447,9 @@
 │     • contract_id, created_at                          │
 │                                                         │
 │  Returns: { success: true, transaction: {...} }        │
+│                                                         │
+│  ⚠️ Backend does NOT submit transactions to Arbitrum!  │
+│  Transactions are submitted directly from frontend.    │
 └────────────────────────────────────────────────────────┘
 ```
 
@@ -486,24 +573,34 @@ Proof Generation (proofGeneration.ts)
 ```
 
 ### 4. Backend API Architecture
+
+**Note:** Backend is used for configuration, user management, and logging ONLY.
+Transactions are submitted directly from frontend to Arbitrum!
+
 ```
 Express Server (port 3001)
     │
-    ├─> /api/wallet/deploy                 - Deploy user wallet
-    ├─> /api/wallet/register-pk            - Register public key on-chain
-    ├─> /api/transaction/deposit           - Submit deposit with proof
-    ├─> /api/transaction/transfer          - Submit transfer with proof
-    ├─> /api/transaction/withdraw          - Submit withdraw with proof
-    ├─> /api/transaction (POST)            - Log transaction to database (NEW)
-    ├─> /api/config                        - Get app configuration
-    ├─> /api/config/balance                - Query encrypted balance
-    ├─> /api/getUser                       - Get user by address/username
-    ├─> /api/register                      - Register new user
-    ├─> /api/deleteUser                    - Delete user
-    └─> /api/tokens                        - Get available tokens
+    │ Configuration & Info:
+    ├─> GET  /api/config                   - Get app configuration
+    ├─> GET  /api/config/balance           - Query encrypted balance
+    ├─> GET  /api/tokens                   - Get available tokens
+    │
+    │ User Management:
+    ├─> GET  /api/getUser                  - Get user by address/username
+    ├─> POST /api/register                 - Register new user
+    ├─> POST /api/deleteUser               - Delete user
+    │
+    │ Transaction Logging (Post-TX):
+    └─> POST /api/transaction              - Log completed transaction
          │
-         ├──> Supabase (PostgreSQL) - User & transaction state
-         └──> Viem - Arbitrum RPC calls
+         └──> Supabase (PostgreSQL) - User data & transaction logs
+
+⚠️ REMOVED Endpoints (transactions now direct from frontend):
+   ❌ /api/wallet/deploy
+   ❌ /api/wallet/register-pk
+   ❌ /api/transaction/deposit
+   ❌ /api/transaction/transfer
+   ❌ /api/transaction/withdraw
 ```
 
 ---
@@ -525,15 +622,32 @@ Express Server (port 3001)
 ### Threat Model
 1. **Malicious Observer** - Can see all on-chain data
    - ✅ Protected: Balances encrypted, amounts never revealed
+   - ⚠️ Exposed: Sender address, receiver address, transaction timing
 
-2. **Malicious Relayer** - Backend could be compromised
-   - ✅ Protected: Can't decrypt balances, can't forge proofs
+2. **Malicious Backend** - Backend database could be compromised
+   - ✅ Protected: Backend has NO control over transactions
+   - ✅ Protected: Backend cannot decrypt balances or forge proofs
+   - ⚠️ Risk: Transaction logs in database reveal transaction patterns (if logged)
 
-3. **Smart Contract Exploit** - Verifier could have bugs
+3. **Smart Contract Exploit** - Verifier or ConfidentialERC20 could have bugs
    - ⚠️ Mitigation: Formal verification needed (future work)
+   - ⚠️ Risk: Incorrect balance updates, unauthorized withdrawals
+
+4. **Browser Compromise** - User's browser or wallet could be hacked
+   - ❌ No protection: Private keys stored in browser
+   - ❌ No protection: Proofs generated client-side
 
 ### Trust Assumptions
-- ✅ User trusts their own browser (proof generation)
-- ✅ User trusts the Noir circuit logic (open source)
-- ✅ User trusts the cryptography (ElGamal on BabyJub)
-- ⚠️ User must trust backend won't censor (can self-host)
+- ✅ User trusts their own browser (proof generation, key storage)
+- ✅ User trusts the Noir circuit logic (open source, auditable)
+- ✅ User trusts the cryptography (ElGamal on BabyJub, UltraHonk)
+- ✅ User trusts Arbitrum network (transactions submitted directly)
+- ✅ User trusts deployed smart contracts (ConfidentialERC20, verifiers)
+- ⚠️ **NO trust required in backend** - Backend is optional (only for logging/config)
+
+### Key Security Properties
+- **Non-custodial**: Users control their own keys and sign their own transactions
+- **Censorship resistant**: Transactions sent directly to Arbitrum (no intermediary)
+- **Amount privacy**: All amounts encrypted with ElGamal homomorphic encryption
+- **Verifiable**: All operations proven with zero-knowledge proofs
+- **Auditable**: Transaction logs can be kept (optionally) for compliance
