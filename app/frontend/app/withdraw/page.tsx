@@ -141,17 +141,13 @@ export default function WithdrawPage() {
       };
       console.log('params:', params);
       const { proof, publicInputs } = await generateWithdraw(params);
-      console.log('proof length:', proof.length);
       console.log('publicInputs length:', publicInputs.length);
 
       // Convert publicInputs from string[] to Uint8Array(416) matching contract layout
       const publicInputsArray = convertDepositPublicInputs(publicInputs);
 
-      // Ensure proof is Uint8Array
-      const proofBytes = proof instanceof Uint8Array ? proof : new Uint8Array(proof);
-
       // Call withdraw function
-      const txHash = await withdrawFromContract(publicInputsArray, proofBytes);
+      const txHash = await withdrawFromContract(publicInputsArray, proof);
       
       setWithdrawSuccess(`Withdraw successful! Transaction: ${txHash}`);
       setAmount(''); // Clear form on success

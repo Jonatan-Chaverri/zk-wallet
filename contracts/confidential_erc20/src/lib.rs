@@ -28,8 +28,9 @@ use alloc::vec::Vec;
 use stylus_sdk::evm;
 use stylus_sdk::{
     prelude::*,
+    abi::Bytes as AbiBytes,
     call::RawCall,
-    alloy_primitives::{Address, FixedBytes, U256, keccak256, Bytes},
+    alloy_primitives::{Address, FixedBytes, U256, Bytes},
     alloy_sol_types::{sol, SolCall}, // 👈 bring SolCall trait into scope for .abi_encode()
 };
 use core::str::FromStr;
@@ -271,23 +272,18 @@ impl ConfidentialERC20 {
     pub fn deposit(
         &mut self,
         proof_inputs: Vec<u8>,
-        proof: Vec<u8>,
+        proof: AbiBytes,
     ) -> Result<(), Vec<u8>> {
-        let proof_inputs_fixed: [u8; 416] = proof_inputs
-            .clone()
-            .try_into()
-            .map_err(|_| "Failed to convert to [u8; 416]".as_bytes().to_vec())?;
+        let proof_inputs_fixed: [u8; 416] = proof_inputs.try_into()?;
         self._deposit_widthdraw(proof_inputs_fixed, proof, true)
     }
 
     pub fn withdraw(
         &mut self,
         proof_inputs: Vec<u8>,
-        proof: Vec<u8>,
+        proof: AbiBytes,
     ) -> Result<(), Vec<u8>> {
-        let proof_inputs_fixed: [u8; 416] = proof_inputs
-            .try_into()
-            .map_err(|_| "Failed to convert to [u8; 416]".as_bytes().to_vec())?;
+        let proof_inputs_fixed: [u8; 416] = proof_inputs.try_into()?;
         self._deposit_widthdraw(proof_inputs_fixed, proof, false)
     }
 
@@ -309,13 +305,11 @@ impl ConfidentialERC20 {
     pub fn transfer_confidential(
         &mut self,
         proof_inputs: Vec<u8>,
-        proof: Vec<u8>,
+        proof: AbiBytes,
     ) -> Result<(), Vec<u8>> {
         self._non_reentrant()?;
 
-        let proof_inputs_fixed: [u8; 704] = proof_inputs
-            .try_into()
-            .map_err(|_| "Failed to convert to [u8; 416]".as_bytes().to_vec())?;
+        let proof_inputs_fixed: [u8; 704] = proof_inputs.try_into()?;
 
         let from = self.vm().msg_sender();
         let sender_pubkey = self._get_user_pk(from);
@@ -324,7 +318,10 @@ impl ConfidentialERC20 {
             return Err("User not registered".into());
         }
 
-        self._verify_proof(&proof_inputs_fixed, &proof, self.transfer_verifier.get())?;
+        if let Err(e) = self._verify_proof(&proof_inputs_fixed, proof, self.transfer_verifier.get()) {
+            self._release_reentrancy();
+            return Err("Proof verification failed".into());
+        }
 
         let transfer_proof_inputs = self._decode_transfer_confidential_proof_inputs(proof_inputs_fixed);
 
@@ -453,7 +450,7 @@ impl ConfidentialERC20 {
     fn _verify_proof(
         &self,
         proof_inputs: &[u8],
-        proof: &[u8],
+        proof: AbiBytes,
         verifier_address: Address,
     ) -> Result<(), Vec<u8>> {
         let mut public_inputs_vec: Vec<FixedBytes<32>> = Vec::new();
@@ -470,10 +467,12 @@ impl ConfidentialERC20 {
             publicInputs: public_inputs_vec,
         }.abi_encode();
 
-        let res = unsafe { RawCall::new_static().call(verifier_address, &calldata)? };
-
-        if res.len() >= 32 && res[31] == 0 {
-            return Err("Verifier returned false".into());
+        unsafe {
+            let res: Result<Vec<u8>, Vec<u8>> =RawCall::new_static().call(verifier_address, &calldata);
+            let data = match res {
+                Ok(data) => data,
+                Err(_data) => panic!("Proof verification failed"),
+            };
         }
     
         Ok(())
@@ -653,7 +652,7 @@ impl ConfidentialERC20 {
     fn _deposit_widthdraw(
         &mut self, 
         proof_inputs: [u8; 416], 
-        proof: Vec<u8>,
+        proof: AbiBytes,
         is_deposit: bool,
     ) -> Result<(), Vec<u8>> {
         self._non_reentrant()?;
@@ -665,10 +664,11 @@ impl ConfidentialERC20 {
             return Err("User not registered".into());
         }
 
-        if is_deposit {
-            self._verify_proof(&proof_inputs, &proof, self.deposit_verifier.get())?;
-        } else {
-            self._verify_proof(&proof_inputs, &proof, self.withdraw_verifier.get())?;
+        let verifier = if is_deposit {self.deposit_verifier.get()} else { self.withdraw_verifier.get()};
+    
+        if let Err(e) = self._verify_proof(&proof_inputs, proof, verifier) {
+            self._release_reentrancy();
+            return Err(["Proof verification failed: ".as_bytes(), &e].concat());
         }
 
         let deposit_proof_inputs = self

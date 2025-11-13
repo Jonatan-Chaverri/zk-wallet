@@ -176,7 +176,8 @@ export default function MyAccountPage() {
       console.log('balEnc:', balEnc);
 
       const decryptedBalance = decryptBalance(balEnc, privateKeyInput.trim());
-      setBalance(decryptedBalance);
+      const decryptedBalanceInt = parseInt(decryptedBalance) / 10**10;
+      setBalance(decryptedBalanceInt.toString());
     } catch (err: any) {
       console.error('Error checking balance:', err);
       setBalanceError(err.message || 'Failed to check balance.');

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { Contract, BrowserProvider, JsonRpcProvider } from 'ethers';
+import { Contract, BrowserProvider, JsonRpcProvider, ethers } from 'ethers';
 import { apiClient, clearConfigCache } from '../lib/utils/api';
 import { useWallet } from './useWallet';
 import { ensureArbitrumSepolia } from '../lib/utils/network';
@@ -186,21 +186,20 @@ export function useConfidentialERC20() {
    */
   const deposit = async (
     proofInputs: Uint8Array | number[],
-    proof: Uint8Array | number[]
+    proof: Uint8Array
   ): Promise<string> => {
     const contract = await getContract();
     if (!contract) {
       throw new Error('Contract not available');
     }
 
-    // Convert to arrays if needed
     const inputsArray = Array.isArray(proofInputs) ? proofInputs : Array.from(proofInputs);
-    const proofArray = Array.isArray(proof) ? proof : Array.from(proof);
+    const proofBytes = ethers.hexlify(proof);
 
     // Estimate gas if possible, otherwise use a high gas limit for complex zk-proof transactions
     let gasLimit = BigInt(15000000); // Default high gas limit for zk-proof transactions
     try {
-      const estimatedGas = await contract.deposit.estimateGas(inputsArray, proofArray);
+      const estimatedGas = await contract.deposit.estimateGas(inputsArray, proofBytes);
       // Add 20% buffer to estimated gas
       gasLimit = (estimatedGas * BigInt(120)) / BigInt(100);
       console.log('Estimated gas:', estimatedGas.toString(), 'Using gas limit:', gasLimit.toString());
@@ -209,7 +208,7 @@ export function useConfidentialERC20() {
       // Keep the default high gas limit
     }
 
-    const tx = await contract.deposit(inputsArray, proofArray, { gasLimit });
+    const tx = await contract.deposit(inputsArray, proofBytes, { gasLimit });
     const receipt = await tx.wait();
 
     if (receipt.status !== 1) {
@@ -224,7 +223,7 @@ export function useConfidentialERC20() {
    */
   const withdraw = async (
     proofInputs: Uint8Array | number[],
-    proof: Uint8Array | number[]
+    proof: Uint8Array
   ): Promise<string> => {
     const contract = await getContract();
     if (!contract) {
@@ -233,9 +232,9 @@ export function useConfidentialERC20() {
 
     // Convert to arrays if needed
     const inputsArray = Array.isArray(proofInputs) ? proofInputs : Array.from(proofInputs);
-    const proofArray = Array.isArray(proof) ? proof : Array.from(proof);
+    const proofBytes = ethers.hexlify(proof);
 
-    const tx = await contract.withdraw(inputsArray, proofArray);
+    const tx = await contract.withdraw(inputsArray, proofBytes);
     const receipt = await tx.wait();
     
     if (receipt.status !== 1) {
@@ -250,7 +249,7 @@ export function useConfidentialERC20() {
    */
   const transferConfidential = async (
     proofInputs: Uint8Array | number[],
-    proof: Uint8Array | number[]
+    proof: Uint8Array
   ): Promise<string> => {
     const contract = await getContract();
     if (!contract) {
@@ -259,9 +258,9 @@ export function useConfidentialERC20() {
 
     // Convert to arrays if needed
     const inputsArray = Array.isArray(proofInputs) ? proofInputs : Array.from(proofInputs);
-    const proofArray = Array.isArray(proof) ? proof : Array.from(proof);
+    const proofBytes = ethers.hexlify(proof);
 
-    const tx = await contract.transferConfidential(inputsArray, proofArray);
+    const tx = await contract.transferConfidential(inputsArray, proofBytes);
     const receipt = await tx.wait();
     
     if (receipt.status !== 1) {

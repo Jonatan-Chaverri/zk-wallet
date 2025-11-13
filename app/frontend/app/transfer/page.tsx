@@ -188,7 +188,6 @@ export default function TransferPage() {
       
       console.log('Transfer params:', params);
       const { proof, publicInputs } = await generateTransfer(params);
-      console.log('Transfer proof length:', proof.length);
       console.log('Transfer publicInputs length:', publicInputs.length);
 
       // Convert publicInputs from string[] to Uint8Array(704) matching contract layout
