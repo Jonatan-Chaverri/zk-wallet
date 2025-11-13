@@ -330,15 +330,15 @@
                         │
                         │ 3. User receives 400 tokens
                         ▼
-┌─────────────┐
-│    USER     │
-│  Encrypted  │
-│  Balance:   │
-│  Enc(600)   │
-│             │
-│  Wallet:    │
-│  +400 tokens│
-└─────────────┘
+                ┌─────────────┐
+                │    USER     │
+                │  Encrypted  │
+                │  Balance:   │
+                │  Enc(600)   │
+                │             │
+                │  Wallet:    │
+                │  +400 tokens│
+                └─────────────┘
 ```
 
 ---
