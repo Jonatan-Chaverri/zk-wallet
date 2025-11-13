@@ -107,26 +107,25 @@
                    ▼
 ┌──────────────────────────────────────────────────────┐
 │              FRONTEND: Generate Proof                │
-│                                                       │
+│                                                      │
 │  Inputs (Private):                                   │
 │  • sender_priv_key: 42                               │
-│  • current_balance: 500 (encrypted)                  │
 │  • r_new_balance: 222 (fresh randomness)             │
-│                                                       │
+│                                                      │
 │  Inputs (Public):                                    │
 │  • sender_address: 1                                 │
 │  • sender_pubkey: {...} (from private key)           │
 │  • old_balance_ct: {...} (current encrypted balance) │
-│  • token: 1                                          │
+│  • token: 0x...                                      │
 │  • amount: 1000                                      │
-│                                                       │
+│                                                      │
 │  Circuit Execution:                                  │
 │  1. Verify sender owns private key                   │
-│  2. Encrypt new amount           │
+│  2. Encrypt new amount                               │
 │  3. Compute new_balance = 500 + 1000 = 1500          │
 │  4. Encrypt new_balance with fresh randomness        │
 │  5. Generate proof (~2 seconds)                      │
-│                                                       │
+│                                                      │
 │  Output:                                             │
 │  • Proof: 6,976 bytes                                │
 │  • new_balance_ct: Enc(1500)                         │
@@ -200,10 +199,9 @@
        ▼
 ┌──────────────────────────────────────────────────────────────────┐
 │              FRONTEND: Generate Transfer Proof                   │
-│                                                                   │
+│                                                                  │
 │  Inputs (Private):                                               │
 │  • sender_priv_key: 42                                           │
-│  • current_balance_sender: 1500                                  │
 │  • transfer_amount: 500                                          │
 │  • r_new_balance_sender: 333 (fresh randomness)                 │
 │  • r_transfer_amount: 444 (fresh randomness)                    │
@@ -295,37 +293,35 @@
 ## Withdraw Workflow
 
 ```
-┌─────────────┐
-│    USER     │
-│  Balance:   │
-│  Enc(1000)  │
-└──────┬──────┘
-       │
-       │ 1. Withdraw 400 tokens
-       │
-       ▼
+                ┌─────────────┐
+                │    USER     │
+                │  Balance:   │
+                │  Enc(1000)  │
+                └──────┬──────┘
+                       │
+                       │ 1. Withdraw 400 tokens
+                       │
+                       ▼
 ┌──────────────────────────────────────────────────────┐
 │              FRONTEND: Generate Proof                │
-│                                                       │
+│                                                      │
 │  Inputs (Private):                                   │
-│  • sender_priv_key: 42                               │
-│  • current_balance: 1000                             │
-│  • withdraw_amount: 400                              │
+│  • sender_priv_key: 42                               │                              │
 │  • r_new_balance: 555 (fresh randomness)             │
-│                                                       │
+│                                                      │
 │  Inputs (Public):                                    │
 │  • sender_address, sender_pubkey                     │
 │  • old_balance_ct: Enc(1000)                         │
 │  • token: 1                                          │
-│                                                       │
+│                                                      │
 │  Circuit Execution:                                  │
 │  1. Verify sender owns private key                   │
 │  2. Encrypt old balance, verify it matches           │
-│  3. Check sufficient balance: 1000 >= 400 ✅         │
+│  3. Check sufficient balance: 1000 >= 400✅         │
 │  4. Compute new_balance = 1000 - 400 = 600           │
 │  5. Encrypt new_balance with fresh randomness        │
 │  6. Generate proof (~2 seconds)                      │
-│                                                       │
+│                                                      │
 │  Output:                                             │
 │  • Proof: 6,976 bytes                                │
 │  • new_balance_ct: Enc(600)                          │
@@ -487,7 +483,7 @@ transactions
 │  User's Keys:                                                  │
 │  • Private Key (scalar): k = 42                                │
 │  • Public Key (point): H = k·G                                 │
-│    where G = BabyJub generator point                           │
+│    where G = Grumpkin generator point                           │
 │                                                                 │
 │  Encrypt a balance (e.g., 1000):                               │
 │  • Choose random scalar: r                                     │
@@ -640,7 +636,7 @@ Express Server (port 3001)
 ### Trust Assumptions
 - ✅ User trusts their own browser (proof generation, key storage)
 - ✅ User trusts the Noir circuit logic (open source, auditable)
-- ✅ User trusts the cryptography (ElGamal on BabyJub, UltraHonk)
+- ✅ User trusts the cryptography (ElGamal on Grumpkin, UltraHonk)
 - ✅ User trusts Arbitrum network (transactions submitted directly)
 - ✅ User trusts deployed smart contracts (ConfidentialERC20, verifiers)
 - ⚠️ **NO trust required in backend** - Backend is optional (only for logging/config)
