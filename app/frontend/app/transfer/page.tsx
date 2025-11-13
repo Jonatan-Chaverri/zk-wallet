@@ -199,6 +199,22 @@ export default function TransferPage() {
       // Call transferConfidential function
       const txHash = await transferConfidential(publicInputsArray, proofBytes);
       
+      // Register transaction in backend
+      try {
+        await apiClient.registerTransaction({
+          tx_hash: txHash,
+          type: 'TRANSFER',
+          token: token,
+          amount: amountWei.toString(),
+          sender_address: address,
+          receiver_address: receiverAddress,
+        });
+        console.log('Transaction registered successfully');
+      } catch (regError) {
+        // Don't fail the transfer if registration fails
+        console.error('Failed to register transaction:', regError);
+      }
+      
       setTransferSuccess(`Transfer successful! Transaction: ${txHash}`);
       setAmount(''); // Clear form on success
       setReceiver(''); // Clear receiver on success

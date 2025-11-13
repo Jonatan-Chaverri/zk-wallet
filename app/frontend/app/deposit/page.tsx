@@ -164,6 +164,22 @@ export default function DepositPage() {
       // Call deposit function
       const txHash = await depositToContract(publicInputsArray, proof);
       
+      // Register transaction in backend
+      try {
+        await apiClient.registerTransaction({
+          tx_hash: txHash,
+          type: 'DEPOSIT',
+          token: token,
+          amount: amountWei.toString(),
+          sender_address: address,
+          receiver_address: address, // For deposit, sender and receiver are the same
+        });
+        console.log('Transaction registered successfully');
+      } catch (regError) {
+        // Don't fail the deposit if registration fails
+        console.error('Failed to register transaction:', regError);
+      }
+      
       setDepositSuccess(`Deposit successful! Transaction: ${txHash}`);
       setAmount(''); // Clear form on success
     } catch (err: any) {
