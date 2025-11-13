@@ -35,37 +35,9 @@
 │                               ▼                                              │
 └─────────────────────────────────────────────────────────────────────────────┘
                                 │
-                                │ HTTP POST
+                                │ RPC Call (viem)
                                 │
                                 ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                      BACKEND (Express API on port 3001)                      │
-│                                                                              │
-│  ┌────────────────────────────────────────────────────────────────────┐     │
-│  │                    Transaction Relay Service                       │     │
-│  │                                                                     │     │
-│  │  Routes:                                                            │     │
-│  │  • POST /api/wallet/deploy        - Deploy user wallet             │     │
-│  │  • POST /api/wallet/register-pk   - Register Grumpkin pubkey        │     │
-│  │  • POST /api/transaction/deposit  - Submit deposit + proof         │     │
-│  │  • POST /api/transaction/transfer - Submit transfer + proof        │     │
-│  │  • POST /api/transaction/withdraw - Submit withdraw + proof        │     │
-│  │  • POST /api/transaction          - Log transaction to database    │     │
-│  │  • GET  /api/config/balance       - Query encrypted balance        │     │
-│  │  • GET  /api/getUser              - Get user by address/username   │     │
-│  │  • POST /api/register             - Register new user              │     │
-│  │  • POST /api/deleteUser           - Delete user by address         │     │
-│  │  • GET  /api/tokens               - Get available tokens           │     │
-│  └────────────────────────┬───────────────────────────────────────────┘     │
-│                           │                                                  │
-│                           │ Signs & submits transaction                      │
-│                           │ (Gas abstraction)                                │
-│                           ▼                                                  │
-└─────────────────────────────────────────────────────────────────────────────┘
-                            │
-                            │ RPC Call (viem)
-                            │
-                            ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                    ARBITRUM SEPOLIA TESTNET                                  │
 │                                                                              │
