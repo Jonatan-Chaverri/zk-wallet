@@ -10,8 +10,8 @@
 │  │                    FRONTEND (Next.js 15.5.6)                       │     │
 │  │                                                                     │     │
 │  │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐             │     │
-│  │  │   Wallet UI  │  │  Proof Gen   │  │   Key Mgmt   │             │     │
-│  │  │   (React)    │  │  (NoirJS)    │  │  (Aztec.js)  │             │     │
+│  │  │   Wallet UI  │  │  Proof Gen   │  │   Supabase   │             │     │
+│  │  │   (Nextjs)    │  │  (NoirJS)   │  │ (Publick Keys)│             │     │
 │  │  └──────────────┘  └──────────────┘  └──────────────┘             │     │
 │  │         │                  │                  │                     │     │
 │  │         └──────────────────┼──────────────────┘                     │     │
@@ -93,14 +93,6 @@
 │  │  │  • Updates both sender & receiver encrypted balances       │     │   │
 │  │  │  • Uses homomorphic addition (no receiver private key!)    │     │   │
 │  │  └────────────────────────────────────────────────────────────┘     │   │
-│  └──────────────────────────────────────────────────────────────────────┘   │
-│                                                                              │
-│  ┌──────────────────────────────────────────────────────────────────────┐   │
-│  │                    WALLET & TOKEN CONTRACTS                          │   │
-│  │                                                                       │   │
-│  │  • UserWallet (Stylus WASM) - ERC-4337 smart wallet                 │   │
-│  │  • ConfidentialERC20 - Token contract with encrypted balances       │   │
-│  │  • WalletFactory - Deploys user wallets                             │   │
 │  └──────────────────────────────────────────────────────────────────────┘   │
 │                                                                              │
 │  Database: Supabase PostgreSQL                                              │
