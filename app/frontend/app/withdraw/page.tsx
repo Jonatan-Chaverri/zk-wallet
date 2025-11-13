@@ -149,6 +149,22 @@ export default function WithdrawPage() {
       // Call withdraw function
       const txHash = await withdrawFromContract(publicInputsArray, proof);
       
+      // Register transaction in backend
+      try {
+        await apiClient.registerTransaction({
+          tx_hash: txHash,
+          type: 'WITHDRAW',
+          token: token,
+          amount: amountWei.toString(),
+          sender_address: address,
+          receiver_address: address, // For withdraw, sender and receiver are the same
+        });
+        console.log('Transaction registered successfully');
+      } catch (regError) {
+        // Don't fail the withdraw if registration fails
+        console.error('Failed to register transaction:', regError);
+      }
+      
       setWithdrawSuccess(`Withdraw successful! Transaction: ${txHash}`);
       setAmount(''); // Clear form on success
     } catch (err: any) {

@@ -16,6 +16,7 @@ export class TransactionService {
         amount: input.amount || null,
         sender_address: input.sender_address || null,
         receiver_address: input.receiver_address || null,
+        contract_id: input.contract_id || null,
       })
       .select()
       .single();

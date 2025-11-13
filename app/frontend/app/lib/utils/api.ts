@@ -282,6 +282,55 @@ class ApiClient {
     );
     return response;
   }
+
+  /**
+   * Register a transaction
+   */
+  async registerTransaction(params: {
+    tx_hash: string;
+    type: 'DEPOSIT' | 'WITHDRAW' | 'TRANSFER';
+    token?: string | null;
+    amount?: string | null;
+    sender_address?: string | null;
+    receiver_address?: string | null;
+  }): Promise<{
+    success: boolean;
+    transaction: {
+      id: string;
+      tx_hash: string;
+      type: string;
+      status: string;
+      token: string | null;
+      amount: string | null;
+      sender_address: string | null;
+      receiver_address: string | null;
+      contract_id: string | null;
+      created_at: string;
+    };
+  }> {
+    const response = await this.request<{
+      success: boolean;
+      transaction: {
+        id: string;
+        tx_hash: string;
+        type: string;
+        status: string;
+        token: string | null;
+        amount: string | null;
+        sender_address: string | null;
+        receiver_address: string | null;
+        contract_id: string | null;
+        created_at: string;
+      };
+    }>(
+      '/api/transaction',
+      {
+        method: 'POST',
+        body: JSON.stringify(params),
+      }
+    );
+    return response;
+  }
 }
 
 export const apiClient = new ApiClient(API_BASE_URL);
