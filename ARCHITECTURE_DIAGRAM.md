@@ -48,9 +48,9 @@
 │  │                  (Arbitrum Stylus WASM)                              │   │
 │  │                                                                       │   │
 │  │  Receives transactions from frontend:                                │   │
-│  │  • deposit(proof, publicInputs, amount)                              │   │
-│  │  • transfer(proof, publicInputs, recipient)                          │   │
-│  │  • withdraw(proof, publicInputs, amount)                             │   │
+│  │  • deposit(proof, publicInputs)                                  │   │
+│  │  • transfer(proof, publicInputs)                                 │   │
+│  │  • withdraw(proof, publicInputs)                                 │   │
 │  │                                                                       │   │
 │  │  Stores:                                                             │   │
 │  │  • User public keys (Grumpkin)                                        │   │
