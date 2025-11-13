@@ -1,20 +1,17 @@
 //!
-//! ConfidentialERC20 - Stylus Contract (Noir ZK Proof Model, NO on-chain crypto math)
+//! ConfidentialERC20 - Stylus Contract (Noir ZK Proof Model)
 //!
 //! Confidential ERC-20 custody contract using user-side ElGamal encryption
-//! (BabyJub) and Noir-generated ZK proofs for confidential transfers.
+//! (Grumpkin Curve) and Noir-generated ZK proofs for confidential transfers.
 //!
 //! Design:
-//! - All cryptographic math (ElGamal, BabyJub, homomorphic add/sub, comparisons)
+//! - All cryptographic math (ElGamal, Grumpkin Curve, homomorphic add/sub, comparisons)
 //!   happens OFF-CHAIN inside Noir circuits.
 //! - This contract ONLY:
 //!   - stores ciphertexts (as raw bytes),
 //!   - verifies Noir proofs with domain separation,
-//!   - updates balances using NEW ciphertexts provided by the user,
+//!   - updates balances using NEW ciphertexts provided by the proof,
 //!   - manages ERC-20 custody (deposit/withdraw).
-//!
-//! Noir verifier interface (assumed):
-//!     function verify(bytes proof, bytes publicInputs) external view returns (bool);
 //!
 
 // Allow `cargo stylus export-abi` to generate a main function.
@@ -31,7 +28,7 @@ use stylus_sdk::{
     abi::Bytes as AbiBytes,
     call::RawCall,
     alloy_primitives::{Address, FixedBytes, U256, Bytes},
-    alloy_sol_types::{sol, SolCall}, // 👈 bring SolCall trait into scope for .abi_encode()
+    alloy_sol_types::{sol, SolCall},
 };
 use core::str::FromStr;
 
@@ -86,6 +83,7 @@ pub struct TransferConfidentialProofInputs {
 
 pub const WETH_TOKEN_ADDRESS: &str = "0x2836ae2ea2c013acd38028fd0c77b92cccfa2ee4";
 
+/// This point represents 0 balance in the Grumpkin Curve
 /// G_GENERATOR_X = 1
 pub const G_GENERATOR_X: [u8; 32] = [
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -138,7 +136,6 @@ sol_storage! {
 }
 
 // Helpers
-
 #[inline(never)]
 fn address_to_bytes32(addr: Address) -> FixedBytes<32> {
     let mut out = [0u8; 32];
@@ -240,8 +237,7 @@ impl ConfidentialERC20 {
         Ok(())
     }
 
-    /// Get encrypted balance for (token, user).
-    /// NOTE: This is just the stored ciphertext; decryption happens off-chain.
+    /// Get encrypted balance for (token, user). Only pk owner can decrypt this balance.
     pub fn balance_of_enc(&self, token: Address, user: Address) -> [u8; 128] {
         let (t, u) = balance_key(token, user);
         let bx1: [u8; 32] = self.balances_x1.get(t).get(u).into();
@@ -258,7 +254,7 @@ impl ConfidentialERC20 {
         result
     }
 
-    /// Deposit/Withdraw plain ERC-20 tokens, and set a NEW encrypted balance for `to`.
+    /// Deposit/Withdraw plain ERC-20 tokens.
     ///
     /// Required public inputs:
     /// user_pubkey: pub EmbeddedCurvePoint,
@@ -351,7 +347,6 @@ impl ConfidentialERC20 {
     }
 
     // --- Admin ---
-
     pub fn set_verifier(
         &mut self,
         deposit_verifier: Address,
@@ -419,7 +414,6 @@ impl ConfidentialERC20 {
     }
 
     /// Set encrypted balance for a user and token.
-    /// NO math, just overwrite with the NEW ciphertext.
     fn _set_balance(&mut self, token: Address, user: Address, ct: &Ciphertext) {
         let (t, u) = balance_key(token, user);
         self.balances_x1
@@ -442,11 +436,8 @@ impl ConfidentialERC20 {
 
     /// Verify a Noir proof.
     ///
-    /// We build public inputs as:
-    ///   [ token, from, to, contract, method_id, proof_inputs... ]
-    ///
     /// All cryptographic relations between ciphertexts & amounts live inside `proof_inputs`
-    /// and are proved in Noir. We do NOT interpret them here.
+    /// and are proved in Verifier before using them.
     fn _verify_proof(
         &self,
         proof_inputs: &[u8],
@@ -526,14 +517,7 @@ impl ConfidentialERC20 {
         }
     }
 
-    /// user_pubkey: pub EmbeddedCurvePoint,
-    /// current_balance_x1: pub EmbeddedCurvePoint,
-    /// current_balance_x2: pub EmbeddedCurvePoint,
-    /// user_address: pub Field,
-    /// token: pub Field
-    /// amount: pub Field,
-    /// new_balance_x1: pub EmbeddedCurvePoint,
-    /// new_balance_x2: pub EmbeddedCurvePoint,
+    /// Parse public inputs into DepositWidthdrawProofInputs struct.
     fn _decode_deposit_withdraw_proof_inputs(
         &self,
         proof_inputs: [u8; 416],
@@ -574,6 +558,7 @@ impl ConfidentialERC20 {
         })
     }
 
+    /// Parse public inputs into TransferConfidentialProofInputs struct.
     fn _decode_transfer_confidential_proof_inputs(&self, proof_inputs: [u8; 704]) -> TransferConfidentialProofInputs {
         TransferConfidentialProofInputs {
             // Addresses only takes 20 bytes, so we need to only take the last 20 bytes

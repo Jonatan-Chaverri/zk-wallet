@@ -147,7 +147,6 @@ export function useConfidentialERC20() {
     // Convert to array of numbers if needed
     const pkArray = Array.isArray(publicKey) ? publicKey : Array.from(publicKey);
     console.log('Registering user public key:', pkArray);
-    console.log('pkArray length:', pkArray.length);
     
     const tx = await contract.registerUserPk(pkArray);
     await tx.wait();

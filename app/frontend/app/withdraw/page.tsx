@@ -55,7 +55,6 @@ export default function WithdrawPage() {
       try {
         const response = await apiClient.getTokens();
         setTokens(response.tokens);
-        console.log('Available tokens:', response.tokens.map(t => t.name));
       } catch (error) {
         console.error('Failed to fetch tokens:', error);
       } finally {
@@ -139,7 +138,6 @@ export default function WithdrawPage() {
         token: token,
         amount: amountWei.toString(),
       };
-      console.log('params:', params);
       const { proof, publicInputs } = await generateWithdraw(params);
       console.log('publicInputs length:', publicInputs.length);
 
