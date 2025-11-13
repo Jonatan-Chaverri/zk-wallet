@@ -615,24 +615,6 @@ Express Server (port 3001)
 
 ## Security Model
 
-### Threat Model
-1. **Malicious Observer** - Can see all on-chain data
-   - ✅ Protected: Balances encrypted, amounts never revealed
-   - ⚠️ Exposed: Sender address, receiver address, transaction timing
-
-2. **Malicious Backend** - Backend database could be compromised
-   - ✅ Protected: Backend has NO control over transactions
-   - ✅ Protected: Backend cannot decrypt balances or forge proofs
-   - ⚠️ Risk: Transaction logs in database reveal transaction patterns (if logged)
-
-3. **Smart Contract Exploit** - Verifier or ConfidentialERC20 could have bugs
-   - ⚠️ Mitigation: Formal verification needed (future work)
-   - ⚠️ Risk: Incorrect balance updates, unauthorized withdrawals
-
-4. **Browser Compromise** - User's browser or wallet could be hacked
-   - ❌ No protection: Private keys stored in browser
-   - ❌ No protection: Proofs generated client-side
-
 ### Trust Assumptions
 - ✅ User trusts their own browser (proof generation, key storage)
 - ✅ User trusts the Noir circuit logic (open source, auditable)
